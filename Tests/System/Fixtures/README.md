@@ -1,0 +1,3 @@
+The RAR5 stored fixture is from [libarchive](https://github.com/libarchive/libarchive/blob/a9f439b9affc978a232d878c5f34f6c74f88e06a/libarchive/test/test_read_format_rar5_stored.rar.uu), pinned at commit `a9f439b9affc978a232d878c5f34f6c74f88e06a`. Its expected payload is defined in the same commit’s `test_read_format_rar5.c`. The upstream license is retained in `LIBARCHIVE-LICENSE.txt`.
+
+Tests decode the fixture into a temporary directory and use Bezel’s actual SafeArchive implementation. The 7z fixture is generated locally with macOS’s bundled bsdtar. Neither fixture introduces a runtime dependency into Bezel.

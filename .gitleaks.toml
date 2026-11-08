@@ -1,0 +1,11 @@
+title = "Bezel source and history scan"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "SHA-256 source-file integrity entries in verification manifests (not credentials)"
+condition = "AND"
+paths = ['''(^|/)Documentation/[^/]*Verification\.json$''']
+regexTarget = "line"
+regexes = ['''^\s*"[^"\r\n]+\.(swift|m|h|js|sh|plist|pbxproj|entitlements)"\s*:\s*"[a-f0-9]{64}"[,]?\s*$''']

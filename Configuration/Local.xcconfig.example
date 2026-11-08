@@ -1,0 +1,4 @@
+// Copy to Local.xcconfig and enter your own settings; that file is Git-ignored.
+BEZEL_DEVELOPMENT_TEAM =
+BEZEL_GOOGLE_CLIENT_ID =
+BEZEL_GOOGLE_CALLBACK_SCHEME = com.bezel.utility.google.unconfigured

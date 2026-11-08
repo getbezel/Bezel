@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bezel · Ad playback verification</title>
+<style>
+  :root { color-scheme: dark; font-family: system-ui; background: #18191d; color: #f5f5f7; }
+  body { max-width: 720px; margin: 64px auto; padding: 24px; }
+  section { padding: 24px; background: #26272c; border-radius: 20px; margin: 20px 0; }
+  h1 { font-size: 30px; letter-spacing: -.6px; }
+  p { color: #b4b6c1; line-height: 1.5; }
+  button { font: inherit; color: white; background: #087df7; border: 0; border-radius: 24px; padding: 12px 20px; cursor: pointer; }
+  pre { white-space: pre-wrap; font-size: 13px; line-height: 1.6; }
+  #signal { color: #8f94a1; margin-top: 18px; }
+</style>
+<h1>Measure playback, not a speed setting.</h1>
+<p>This offline fixture generates 30 seconds of silent PCM audio. It uses the production companion controller and measures the browser’s real media timeline through the natural ended event.</p>
+<section>
+  <button id="start">Run 30-second ad at 10×</button>
+  <div id="signal">No ad playing</div>
+  <audio id="audio" controls></audio>
+  <pre id="results">Ready</pre>
+</section>
+<script src="../../Companions/Spotify/bezel-ad-speed.js"></script>
+<script>
+  const audio = document.querySelector("audio");
+  const results = document.querySelector("#results");
+  const signal = document.querySelector("#signal");
+  const rate = 8000, seconds = 30;
+  const bytes = new ArrayBuffer(44 + rate * seconds * 2);
+  const data = new DataView(bytes);
+  const chars = (at, text) => [...text].forEach((char, i) => data.setUint8(at + i, char.charCodeAt(0)));
+  chars(0,"RIFF"); data.setUint32(4, bytes.byteLength - 8, true); chars(8,"WAVE");
+  chars(12,"fmt "); data.setUint32(16,16,true); data.setUint16(20,1,true); data.setUint16(22,1,true);
+  data.setUint32(24,rate,true); data.setUint32(28,rate*2,true); data.setUint16(32,2,true); data.setUint16(34,16,true);
+  chars(36,"data"); data.setUint32(40,bytes.byteLength - 44,true);
+  audio.src = URL.createObjectURL(new Blob([bytes],{type:"audio/wav"}));
+  window.fixtureResult = null;
+  let start;
+  document.querySelector("#start").onclick = async () => {
+    if (audio.readyState < 2) await new Promise(resolve => audio.addEventListener("loadeddata",resolve,{once:true}));
+    audio.currentTime = 0;
+    signal.dataset.testid = "ad-controls";
+    signal.textContent = "Advertisement · generated offline fixture";
+    start = performance.now();
+    await audio.play();
+  };
+  audio.addEventListener("ended", () => {
+    signal.removeAttribute("data-testid");
+    signal.textContent = "Normal content · original settings restored";
+    setTimeout(() => {
+      const elapsed = (performance.now() - start) / 1000;
+      window.fixtureResult = { duration: audio.duration, elapsed, effectiveRate: audio.duration / elapsed,
+        restoredRate: audio.playbackRate, restoredMute: audio.muted, status: BezelAdSpeed.status() };
+      results.textContent = JSON.stringify(window.fixtureResult, null, 2);
+    }, 10);
+  });
+  setInterval(() => {
+    if (!window.fixtureResult) results.textContent = JSON.stringify({ position: audio.currentTime,
+      rate: audio.playbackRate, muted: audio.muted, status: BezelAdSpeed.status() },null,2);
+  },250);
+</script>
+</html>

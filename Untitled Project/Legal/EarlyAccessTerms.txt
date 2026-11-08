@@ -1,0 +1,17 @@
+BEZEL — EARLY ACCESS TERMS
+Version: October 21, 2026
+
+Copyright © 2026 Bezel authors. All rights reserved in original Bezel contributions.
+Third-party components remain subject to their own licenses and ownership.
+
+Bezel is a pre-release evaluation build. Subject to your agreement to these terms, the copyright holder grants you a limited, personal, non-exclusive, non-transferable right to use this copy for evaluation and feedback. No ownership of the software is transferred.
+
+Except with the owner's written permission, do not redistribute, sell, sublicense, publish, copy (other than a reasonable personal backup), modify or create derivative works of the proprietary portions of Bezel. Do not decompile, disassemble or reverse engineer those portions except where applicable law permits. These restrictions do not limit rights granted by applicable third-party licenses or mandatory law.
+
+Do not publish non-public source code, credentials or private development materials supplied separately in confidence. This notice alone is not a signed confidentiality agreement.
+
+Original source code, artwork and written content are protected where copyright law applies. These terms do not claim ownership of general ideas, functionality, independently developed implementations or third-party work. Permission to distribute third-party components must be established separately; see Third-Party Notices.
+
+THIS PRE-RELEASE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTIES TO THE MAXIMUM EXTENT PERMITTED BY LAW. IT MAY CONTAIN ERRORS, LOSE TEMPORARY DATA OR CHANGE WITHOUT NOTICE. TO THE EXTENT PERMITTED BY LAW, THE OWNER IS NOT LIABLE FOR INDIRECT OR CONSEQUENTIAL DAMAGES. NOTHING EXCLUDES RIGHTS OR LIABILITY THAT CANNOT LAWFULLY BE EXCLUDED.
+
+If you do not agree, do not install or use this evaluation copy. An enforceable agreement depends on applicable law and the circumstances of assent; this notice does not promise a particular legal remedy. Obtain legal review before a commercial release or relying on confidentiality or enforcement provisions.

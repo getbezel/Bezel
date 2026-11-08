@@ -1,0 +1,16 @@
+BEZEL — EARLY ACCESS SETUP
+
+Requires macOS 15 or later. Supports Apple silicon and Intel.
+
+1. Quit any old Bezel from its menu bar menu. Closing its dashboard does not quit it. Temporary clipboard history and Shelf entries clear when quitting.
+2. Drag Bezel.app to Applications. Eject this disk image and launch the installed copy. Keep one installed copy to avoid confusing permission entries.
+3. Open Bezel Settings > Privacy. For Grid, Monolith and Border, enable that installed Bezel under System Settings > Privacy & Security > Accessibility. Quick Clip copy/paste also needs Keyboard Commands access. Lens needs Screen & System Audio Recording. Player controls request Automation only when connected.
+4. Return to Bezel and choose Check Access. The app checks actual window access and keyboard event posting separately. If macOS requests it, quit and reopen the installed copy. If an old entry remains allowed but access fails, remove the old Bezel entry, use Show This App in Finder, and add that exact installed copy again. Never grant access to a differently located build by mistake.
+
+Permissions are per Mac and cannot be pre-approved by a DMG. Bezel never changes privacy databases or grants itself permission. Google sign-in is optional; the OAuth app is in testing and only configured test accounts can sign in. Core utilities work without an account. Focus notification control requires the user-created Shortcuts described in Monolith. Conversion tools are optional and not bundled. Hardware charge control and some audio/device combinations still need individual acceptance testing.
+
+DISTRIBUTION STATUS
+This app is Apple Development signed. This disk image is not Developer ID signed or notarized. Gatekeeper may block it on another Mac; this is not a public distribution release. Do not disable Gatekeeper or macOS security globally. A normal shareable public release needs the owner's Developer ID Application certificate and successful Apple notarization.
+
+LICENSING STATUS
+Read Early Access Terms and Third-Party Notices. DragWheel upstream redistribution permission is not established by its supplied archive. Resolve that permission before sharing this package with others. The package is prepared for review; its existence is not legal or production approval.

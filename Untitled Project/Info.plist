@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.bezel.utility.scope</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>bezel</string>
+			</array>
+		</dict>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.bezel.utility.google</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>$(BEZEL_GOOGLE_CALLBACK_SCHEME)</string>
+			</array>
+		</dict>
+	</array>
+	<key>GIDClientID</key>
+	<string>$(BEZEL_GOOGLE_CLIENT_ID)</string>
+	<key>NSFocusStatusUsageDescription</key>
+	<string>Bezel shows a brief notch notification when your shared Focus status changes. It does not change your Focus settings.</string>
+	<key>NSPrincipalClass</key>
+	<string>NSApplication</string>
+	<key>UTExportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>Bezel Dashboard Module</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.bezel.utility.dashboard-module</string>
+		</dict>
+	</array>
+</dict>
+</plist>
