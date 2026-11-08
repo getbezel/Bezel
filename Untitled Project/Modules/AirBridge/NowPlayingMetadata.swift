@@ -4,9 +4,17 @@ import Observation
 import CoreFoundation
 
 enum MetadataPlayer: String, CaseIterable, Sendable, Identifiable {
-    case music = "com.apple.Music", spotify = "com.spotify.client"
+    case music = "com.apple.Music", spotify = "com.spotify.client", youtubeMusic = "com.google.Chrome", youtubeMusicBrave = "com.brave.Browser"
     var id: String { rawValue }
-    var name: String { self == .music ? "Apple Music" : "Spotify" }
+    var isYouTubeMusic: Bool { self == .youtubeMusic || self == .youtubeMusicBrave }
+    var name: String {
+        switch self {
+        case .music: "Apple Music"
+        case .spotify: "Spotify"
+        case .youtubeMusic: "YouTube Music · Chrome"
+        case .youtubeMusicBrave: "YouTube Music · Brave"
+        }
+    }
 }
 
 struct PlayerTarget: Sendable, Equatable {
@@ -15,7 +23,17 @@ struct PlayerTarget: Sendable, Equatable {
     let instance: String
 }
 
-enum PlayerCommand: String, Sendable { case previous, playPause, next }
+enum PlayerCommand: Sendable, Equatable {
+    case previous, playPause, next, setVolume(Int), seek(seconds: Double, trackID: String)
+    var playbackAction: String? {
+        switch self {
+        case .previous: "previous"
+        case .playPause: "playPause"
+        case .next: "next"
+        case .setVolume, .seek: nil
+        }
+    }
+}
 
 struct PlayingTrack: Sendable, Equatable {
     let target: PlayerTarget
@@ -24,9 +42,20 @@ struct PlayingTrack: Sendable, Equatable {
     let artist: String
     let album: String
     let artwork: Data?
+    var isPlaying: Bool = true
+    var volume: Double? = nil
+    var timeline: PlaybackTimeline? = nil
     var label: String { artist.isEmpty ? title : "\(title) · \(artist)" }
+    func withPlayback(playing: Bool, volume: Double?) -> Self {
+        Self(target: target, trackID: trackID, title: title, artist: artist, album: album, artwork: artwork, isPlaying: playing, volume: volume,
+             timeline: timeline.flatMap { PlaybackTimeline(position: $0.elapsed(playing: isPlaying), duration: $0.duration) })
+    }
+    func withTimeline(_ value: PlaybackTimeline?) -> Self {
+        Self(target: target, trackID: trackID, title: title, artist: artist, album: album, artwork: artwork,
+             isPlaying: isPlaying, volume: volume, timeline: value)
+    }
     func withArtwork(_ data: Data?) -> Self {
-        Self(target: target, trackID: trackID, title: title, artist: artist, album: album, artwork: data)
+        Self(target: target, trackID: trackID, title: title, artist: artist, album: album, artwork: data, isPlaying: isPlaying, volume: volume, timeline: timeline)
     }
 }
 
@@ -51,6 +80,8 @@ struct PlayerPayload: Sendable {
     let album: String
     let artwork: Data?
     let artworkURL: URL?
+    let volume: Double?
+    let timeline: PlaybackTimeline?
 
     static func decode(_ reply: [String: Any], target: PlayerTarget) throws -> Self {
         if let error = reply["error"] as? String { throw PlayerMetadataFailure.message(clean(error)) }
@@ -61,10 +92,23 @@ struct PlayerPayload: Sendable {
         func field(_ key: String) -> String { clean(reply[key] as? String ?? "") }
         let data = reply["artwork"] as? Data
         let rawURL = (reply["artworkURL"] as? String).flatMap(URL.init(string:))
+        let rawVolume = reply["volume"] as? NSNumber
+        let volume = rawVolume.flatMap { value -> Double? in
+            guard CFGetTypeID(value) != CFBooleanGetTypeID(), value.doubleValue.isFinite,
+                  (0...100).contains(value.doubleValue) else { return nil }
+            return value.doubleValue / 100
+        }
+        func number(_ key: String) -> Double? {
+            guard let value = reply[key] as? NSNumber, CFGetTypeID(value) != CFBooleanGetTypeID(), value.doubleValue.isFinite else { return nil }
+            return value.doubleValue
+        }
+        let timeline = number("position").flatMap { position in
+            number("duration").flatMap { PlaybackTimeline(position: position, duration: $0) }
+        }
         return Self(target: target, playing: playing.boolValue, unchanged: (reply["unchanged"] as? Bool) == true,
                     id: field("id"), title: field("title"), artist: field("artist"), album: field("album"),
                     artwork: data.flatMap { $0.count <= SpotifyArtwork.maximumBytes ? $0 : nil },
-                    artworkURL: rawURL.flatMap { SpotifyArtwork.allows($0) ? $0 : nil })
+                    artworkURL: rawURL.flatMap { (target.player.isYouTubeMusic ? YouTubeArtwork.allows($0) : SpotifyArtwork.allows($0)) ? $0 : nil }, volume: volume, timeline: timeline)
     }
 
     static func clean(_ text: String) -> String {
@@ -77,6 +121,10 @@ enum PlayingTrackSelection {
     static func choose(_ tracks: [PlayingTrack], preferredBundle: String?, frontmostBundle: String?, previous: PlayerTarget?) -> PlayingTrack? {
         // A routed Safari/Chrome stream must never acquire an unrelated Music cover.
         if let preferredBundle { return tracks.first { $0.target.player.rawValue == preferredBundle } }
+        let playing = tracks.filter(\.isPlaying)
+        if let frontmostBundle, let track = playing.first(where: { $0.target.player.rawValue == frontmostBundle }) { return track }
+        if let previous, let track = playing.first(where: { $0.target == previous }) { return track }
+        if let track = playing.first { return track }
         if let frontmostBundle, let track = tracks.first(where: { $0.target.player.rawValue == frontmostBundle }) { return track }
         if let previous, let track = tracks.first(where: { $0.target == previous }) { return track }
         return tracks.first
@@ -91,13 +139,13 @@ enum SpotifyArtwork {
         (url.port == nil || url.port == 443) && url.user == nil && url.password == nil
     }
 
-    static func load(_ url: URL, session: URLSession) async throws -> Data? {
-        guard allows(url) else { return nil }
+    static func load(_ url: URL, session: URLSession, policy: @Sendable (URL) -> Bool = SpotifyArtwork.allows) async throws -> Data? {
+        guard policy(url) else { return nil }
         let (bytes, response) = try await session.bytes(for: URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData))
         let requestTask = bytes.task
         defer { requestTask.cancel() }
         guard let response = response as? HTTPURLResponse, response.statusCode == 200,
-              response.url.map(allows) == true, response.mimeType?.hasPrefix("image/") == true,
+              response.url.map(policy) == true, response.mimeType?.hasPrefix("image/") == true,
               response.expectedContentLength <= Int64(maximumBytes) else { return nil }
         return try await withTaskCancellationHandler {
             var data = Data()
@@ -120,15 +168,23 @@ enum SpotifyArtwork {
     }
 }
 
+enum YouTubeArtwork {
+    static func allows(_ url: URL) -> Bool {
+        guard url.scheme?.lowercased() == "https", url.user == nil, url.password == nil,
+              url.port == nil || url.port == 443, let host = url.host?.lowercased() else { return false }
+        return host == "i.ytimg.com" || host == "lh3.googleusercontent.com" || host == "lh3.google.com"
+    }
+}
+
 private final class ArtworkRedirectPolicy: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
     func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
                     newRequest request: URLRequest, completionHandler: @escaping @Sendable (URLRequest?) -> Void) {
-        completionHandler(request.url.map(SpotifyArtwork.allows) == true ? request : nil)
+        completionHandler(request.url.map { SpotifyArtwork.allows($0) || YouTubeArtwork.allows($0) } == true ? request : nil)
     }
 }
 
 protocol PlayerReading: Sendable {
-    func read(_ targets: [PlayerTarget], spotifyArtwork: Bool) async throws -> PlayerRefresh
+    func read(_ targets: [PlayerTarget], spotifyArtwork: Bool, youtubeArtwork: Bool) async throws -> PlayerRefresh
     func control(_ target: PlayerTarget, command: PlayerCommand) async -> String?
     func clear() async
 }
@@ -156,7 +212,7 @@ actor NativePlayerReader: PlayerReading {
 
     func clear() { epoch = UUID(); cache.removeAll(); artworkTask?.task.cancel(); artworkTask = nil }
 
-    func read(_ targets: [PlayerTarget], spotifyArtwork: Bool) async throws -> PlayerRefresh {
+    func read(_ targets: [PlayerTarget], spotifyArtwork: Bool, youtubeArtwork: Bool) async throws -> PlayerRefresh {
         let generation = epoch
         cache = cache.filter { player, cached in targets.contains { $0.player == player && $0 == cached.track.target } }
         var result = PlayerRefresh()
@@ -165,21 +221,26 @@ actor NativePlayerReader: PlayerReading {
             let old = cache[target.player]
             let previous = old.flatMap { $0.refreshed.duration(to: .now) < .seconds(30) ? $0.track.trackID : nil }
             do {
-                let payload = try PlayerPayload.decode(BezelReadPlayer(target.player.rawValue, target.pid, previous), target: target)
+                let reply = target.player.isYouTubeMusic ? BezelReadYouTubeMusic(target.player.rawValue, target.pid, previous) : BezelReadPlayer(target.player.rawValue, target.pid, previous)
+                let payload = try PlayerPayload.decode(reply, target: target)
+                let downloadsArtwork = target.player == .spotify ? spotifyArtwork : (target.player.isYouTubeMusic && youtubeArtwork)
                 try Task.checkCancellation()
-                guard payload.playing else { continue }
+                guard payload.playing || !payload.id.isEmpty || !payload.title.isEmpty else { continue }
                 if payload.unchanged {
                     guard let old, old.track.trackID == payload.id else { throw PlayerMetadataFailure.message("The player's track changed while reading metadata.") }
-                    result.tracks.append(target.player == .spotify && !spotifyArtwork ? old.track.withArtwork(nil) : old.track)
+                    let refreshed = old.track.withPlayback(playing: payload.playing, volume: payload.volume).withTimeline(payload.timeline)
+                    cache[target.player] = Cached(track: refreshed, artworkURL: old.artworkURL, refreshed: old.refreshed)
+                    result.tracks.append(target.player != .music && !downloadsArtwork ? refreshed.withArtwork(nil) : refreshed)
                     continue
                 }
                 var art: Data?
                 if target.player == .music, let data = payload.artwork { art = ClipboardImage.preview(data: data)?.thumbnail }
-                if target.player == .spotify, spotifyArtwork, let url = payload.artworkURL {
+                if downloadsArtwork, let url = payload.artworkURL {
                     if old?.artworkURL == url, let existing = old?.track.artwork { art = existing }
                     else {
                         let id = UUID()
-                        let task = Task { try await SpotifyArtwork.load(url, session: session) }
+                        let youtube = target.player.isYouTubeMusic
+                        let task = Task { try await SpotifyArtwork.load(url, session: session, policy: { youtube ? YouTubeArtwork.allows($0) : SpotifyArtwork.allows($0) }) }
                         artworkTask = (id, task)
                         art = try? await withTaskCancellationHandler { try await task.value } onCancel: { task.cancel() }
                         if artworkTask?.id == id { artworkTask = nil }
@@ -189,7 +250,7 @@ actor NativePlayerReader: PlayerReading {
                 guard epoch == generation else { throw CancellationError() }
                 let title = payload.title.isEmpty ? target.player.name : payload.title
                 let identity = payload.id.isEmpty ? [title, payload.artist, payload.album].joined(separator: "\u{1f}") : payload.id
-                let track = PlayingTrack(target: target, trackID: identity, title: title, artist: payload.artist, album: payload.album, artwork: art)
+                let track = PlayingTrack(target: target, trackID: identity, title: title, artist: payload.artist, album: payload.album, artwork: art, isPlaying: payload.playing, volume: payload.volume, timeline: payload.timeline)
                 cache[target.player] = Cached(track: track, artworkURL: payload.artworkURL, refreshed: .now)
                 result.tracks.append(track)
             } catch is CancellationError { throw CancellationError() }
@@ -200,7 +261,31 @@ actor NativePlayerReader: PlayerReading {
 
     func control(_ target: PlayerTarget, command: PlayerCommand) -> String? {
         guard !Task.isCancelled else { return nil }
-        return BezelControlPlayer(target.player.rawValue, target.pid, command.rawValue)
+        if target.player.isYouTubeMusic {
+            guard let cached = cache[target.player]?.track, cached.target == target else { return "The YouTube Music tab is no longer available." }
+            if case .seek(let seconds, let trackID) = command {
+                guard cached.trackID == trackID, let timeline = cached.timeline,
+                      seconds.isFinite, (0...timeline.duration).contains(seconds) else { return "The track changed or has no seekable timeline." }
+                return BezelSeekYouTubeMusic(target.player.rawValue, target.pid, trackID, seconds)
+            }
+            if case .setVolume(let percent) = command {
+                guard (0...100).contains(percent) else { return "Volume must be between 0 and 100." }
+                return BezelControlYouTubeMusic(target.player.rawValue, target.pid, cached.trackID, "volume", percent)
+            }
+            guard let action = command.playbackAction else { return "Unknown playback action." }
+            return BezelControlYouTubeMusic(target.player.rawValue, target.pid, cached.trackID, action, 0)
+        }
+        if case .seek(let seconds, let trackID) = command {
+            guard let cached = cache[target.player]?.track, cached.target == target,
+                  cached.trackID == trackID, let timeline = cached.timeline,
+                  seconds.isFinite, (0...timeline.duration).contains(seconds) else { return "The track changed or has no seekable timeline." }
+            return BezelSeekPlayer(target.player.rawValue, target.pid, trackID, seconds)
+        }
+        if case .setVolume(let percent) = command {
+            return BezelSetPlayerVolume(target.player.rawValue, target.pid, percent)
+        }
+        guard let action = command.playbackAction else { return "Unknown playback action." }
+        return BezelControlPlayer(target.player.rawValue, target.pid, action)
     }
 }
 
@@ -216,6 +301,13 @@ final class NowPlayingMetadata {
     var downloadsSpotifyArtwork: Bool {
         didSet {
             defaults.set(downloadsSpotifyArtwork, forKey: "media.spotifyArtwork")
+            stopPolling()
+            reconcile()
+        }
+    }
+    var downloadsYouTubeArtwork: Bool {
+        didSet {
+            defaults.set(downloadsYouTubeArtwork, forKey: "media.youtubeArtwork")
             stopPolling()
             reconcile()
         }
@@ -247,7 +339,8 @@ final class NowPlayingMetadata {
          authorize: @escaping @Sendable (PlayerTarget) async -> Int32 = NowPlayingMetadata.requestAccess) {
         self.defaults = defaults; self.reader = reader; self.targets = targets; self.foreground = foreground; self.authorize = authorize
         isEnabled = defaults.bool(forKey: "media.metadata")
-        downloadsSpotifyArtwork = defaults.bool(forKey: "media.spotifyArtwork")
+        downloadsSpotifyArtwork = defaults.object(forKey: "media.spotifyArtwork") as? Bool ?? true
+        downloadsYouTubeArtwork = defaults.bool(forKey: "media.youtubeArtwork")
         connected = Set((defaults.stringArray(forKey: "media.players") ?? []).compactMap(MetadataPlayer.init(rawValue:)))
     }
 
@@ -285,6 +378,11 @@ final class NowPlayingMetadata {
     }
 
     @discardableResult func send(_ command: PlayerCommand) -> Bool {
+        if case .setVolume(let percent) = command, !(0...100).contains(percent) { return false }
+        if case .seek(let seconds, let trackID) = command {
+            guard let selected, selected.trackID == trackID, let timeline = selected.timeline,
+                  seconds.isFinite, (0...timeline.duration).contains(seconds), !isControlling else { return false }
+        }
         guard let target = selected?.target, connected.contains(target.player), isEnabled, active else { return false }
         guard !isControlling else { return true }
         isControlling = true; controlError = nil
@@ -292,6 +390,15 @@ final class NowPlayingMetadata {
         controlTask = Task { [weak self, reader] in
             let error = await reader.control(target, command: command)
             guard let self, !Task.isCancelled, commandID == id else { return }
+            if error == nil {
+                let result = try? await reader.read([target], spotifyArtwork: downloadsSpotifyArtwork, youtubeArtwork: downloadsYouTubeArtwork)
+                guard !Task.isCancelled, commandID == id else { return }
+                if let result, result.errors[target.player] == nil {
+                    tracks.removeAll { $0.target == target }
+                    tracks.append(contentsOf: result.tracks)
+                    selectTrack()
+                }
+            }
             isControlling = false; controlTask = nil; controlError = error
         }
         return true
@@ -318,14 +425,20 @@ final class NowPlayingMetadata {
             while !Task.isCancelled {
                 guard loopID == id else { return }
                 let requested = targets().filter { connected.contains($0.player) }
+                let refreshCommandID = commandID
                 do {
-                    let result = try await reader.read(requested, spotifyArtwork: downloadsSpotifyArtwork)
+                    let result = try await reader.read(requested, spotifyArtwork: downloadsSpotifyArtwork, youtubeArtwork: downloadsYouTubeArtwork)
                     guard !Task.isCancelled, loopID == id else { return }
-                    tracks = result.tracks
-                    playerErrors = result.errors
-                    selectTrack()
+                    if !isControlling, commandID == refreshCommandID {
+                        tracks = result.tracks
+                        playerErrors = result.errors
+                        selectTrack()
+                    }
                 } catch is CancellationError { return }
-                catch { guard loopID == id else { return }; tracks = []; selected = nil }
+                catch {
+                    guard loopID == id else { return }
+                    if !isControlling, commandID == refreshCommandID { tracks = []; selected = nil }
+                }
                 do { try await Task.sleep(for: .seconds(2)) } catch { return }
             }
         }

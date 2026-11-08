@@ -9,15 +9,24 @@ final class MonolithService {
     private(set) var isActive = false
     private(set) var remainingSeconds = 0
     var lastError: String?
+    var dimming: Double = UserDefaults.standard.object(forKey: "monolith.dimming") as? Double ?? 0.55 {
+        didSet {
+            let clamped = min(0.85, max(0.20, dimming))
+            if dimming != clamped { dimming = clamped }
+            UserDefaults.standard.set(clamped, forKey: "monolith.dimming")
+            updateOpacity()
+        }
+    }
     @ObservationIgnored private var countdown: SessionCountdown?
     @ObservationIgnored private var timer: Timer?
     @ObservationIgnored private var panels: [NSPanel] = []
     @ObservationIgnored private var lastFrame: CGRect?
     @ObservationIgnored private var displaySignature: [CGRect] = []
+    @ObservationIgnored private let tracker = FocusWindowTracker()
 
     func start(minutes: Int = 25) {
-        guard AXIsProcessTrusted() else {
-            lastError = "Enable Accessibility access in System Settings to keep the active window illuminated."
+        guard AccessibilityAccess.canControlWindows else {
+            lastError = "macOS is blocking window access for this copy of Bezel. If Bezel is already enabled in Accessibility settings, remove the old entry and add the app shown in Bezel Settings → Privacy → Show This App in Finder."
             return
         }
         stop()
@@ -26,11 +35,12 @@ final class MonolithService {
         countdown = SessionCountdown(seconds: remainingSeconds)
         isActive = true
         focusAutomation.setSessionActive(true)
-        update()
-        let timer = Timer(timeInterval: 0.2, repeats: true) { [weak self] _ in
+        tracker.onChange = { [weak self] frame, animated in self?.render(frame: frame, animated: animated) }
+        tracker.start()
+        let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.update() }
         }
-        timer.tolerance = 0.04
+        timer.tolerance = 0.1
         RunLoop.main.add(timer, forMode: .common)
         self.timer = timer
     }
@@ -42,7 +52,18 @@ final class MonolithService {
         isActive = false
         focusAutomation.setSessionActive(false)
         remainingSeconds = 0
-        panels.forEach { $0.orderOut(nil) }
+        tracker.stop()
+        let oldPanels = panels
+        if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+            oldPanels.forEach { $0.orderOut(nil) }
+        } else {
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.22
+                oldPanels.forEach { $0.animator().alphaValue = 0 }
+            } completionHandler: {
+                MainActor.assumeIsolated { oldPanels.forEach { $0.orderOut(nil) } }
+            }
+        }
         panels.removeAll()
         lastFrame = nil
         displaySignature = []
@@ -53,52 +74,57 @@ final class MonolithService {
         let seconds = countdown.remainingSeconds()
         if remainingSeconds != seconds { remainingSeconds = seconds }
         if remainingSeconds == 0 { stop(); return }
-        guard let window = FocusedWindowAccess.current() else {
-            // Never leave a dark, uncut overlay behind when AX access is unavailable.
+    }
+
+    private func render(frame: CGRect?, animated: Bool) {
+        guard isActive else { return }
+        guard let frame else {
             panels.forEach { $0.orderOut(nil) }
             lastFrame = nil
             return
         }
-        let frame = FocusedWindowAccess.appKitFrame(window.frame).insetBy(dx: -1, dy: -1)
-        let displays = NSScreen.screens.map(\.frame)
-        guard frame != lastFrame || displays != displaySignature else { return }
         lastFrame = frame
-        displaySignature = displays
-        var desired: [CGRect] = []
-        for screen in NSScreen.screens {
-            let area = screen.frame
-            let cutout = area.intersection(frame)
-            let pieces: [CGRect]
-            if cutout.isNull || cutout.isEmpty { pieces = [area] }
-            else {
-                pieces = [
-                    CGRect(x: area.minX, y: area.minY, width: area.width, height: cutout.minY - area.minY),
-                    CGRect(x: area.minX, y: cutout.maxY, width: area.width, height: area.maxY - cutout.maxY),
-                    CGRect(x: area.minX, y: cutout.minY, width: cutout.minX - area.minX, height: cutout.height),
-                    CGRect(x: cutout.maxX, y: cutout.minY, width: area.maxX - cutout.maxX, height: cutout.height)
-                ]
-            }
-            desired.append(contentsOf: pieces.filter { $0.width > 0 && $0.height > 0 })
-        }
-        for (index, rect) in desired.enumerated() {
-            let panel: NSPanel
-            if index < panels.count { panel = panels[index] }
-            else {
-                panel = NSPanel(contentRect: rect, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+        let screens = NSScreen.screens
+        let displays = screens.map(\.visibleFrame)
+        if displays != displaySignature {
+            panels.forEach { $0.orderOut(nil) }
+            panels.removeAll()
+            displaySignature = displays
+            for area in displays {
+                let panel = NSPanel(contentRect: area, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
                 panel.isOpaque = false
-                panel.backgroundColor = .black.withAlphaComponent(0.90)
+                panel.backgroundColor = .clear
                 panel.hasShadow = false
                 panel.ignoresMouseEvents = true
                 panel.hidesOnDeactivate = false
                 panel.level = NSWindow.Level(rawValue: NSWindow.Level.floating.rawValue + 1)
                 panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
                 panel.isReleasedWhenClosed = false
+                panel.contentView = FocusBackdropView(frame: CGRect(origin: .zero, size: area.size))
                 panels.append(panel)
             }
-            if panel.frame != rect { panel.setFrame(rect, display: true) }
-            if !panel.isVisible { panel.orderFrontRegardless() }
         }
-        for panel in panels.dropFirst(desired.count) { panel.orderOut(nil) }
+        let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        for (panel, area) in zip(panels, displays) {
+            guard let backdrop = panel.contentView as? FocusBackdropView else { continue }
+            backdrop.update(window: FocusDimmingGeometry.localWindow(frame, in: area), animated: animated, reduceMotion: reduceMotion)
+            if !panel.isVisible {
+                panel.alphaValue = reduceMotion ? dimming : 0
+                panel.orderFrontRegardless()
+                NSAnimationContext.runAnimationGroup { context in
+                    context.duration = reduceMotion ? 0 : 0.25
+                    panel.animator().alphaValue = dimming
+                }
+            }
+        }
+    }
+
+    private func updateOpacity() {
+        guard isActive else { return }
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 0 : 0.15
+            panels.forEach { $0.animator().alphaValue = dimming }
+        }
     }
 
     func openFocusSettings() {
@@ -119,13 +145,16 @@ struct MonolithView: View {
                     Text(service.isActive ? "Your active window stays in the light." : "Dim the desktop and settle into one thing.").foregroundStyle(.secondary)
                     Button(service.isActive ? "End Session" : "Begin Focus") {
                         if service.isActive { service.stop() } else { service.start(minutes: minutes) }
-                    }.buttonStyle(.borderedProminent).controlSize(.large)
+                    }.buttonStyle(BezelActionStyle(prominent: true)).controlSize(.large)
                 }.frame(maxWidth: .infinity).padding(.vertical, 28)
             }
             Section("Session") {
                 Stepper("Duration: \(minutes) minutes", value: $minutes, in: 5...240, step: 5).disabled(service.isActive)
-                LabeledContent("Background dimming", value: "90%")
-                Text("Click-through overlays dim everything outside your active window. They do not change other apps’ window opacity.").font(.caption).foregroundStyle(.secondary)
+                LabeledContent("Background dimming", value: "\(Int(service.dimming * 100))%")
+                Slider(value: $service.dimming, in: 0.20...0.85, step: 0.05) {
+                    Text("Background dimming")
+                } minimumValueLabel: { Image(systemName: "sun.max") } maximumValueLabel: { Image(systemName: "moon.fill") }
+                Text("A soft shade keeps your active window clear. Adjust it while you work; the menu bar and Dock stay visible.").font(.caption).foregroundStyle(.secondary)
             }
             Section("Notifications") {
                 Toggle("Run Focus shortcuts with each session", isOn: $service.focusAutomation.isEnabled)
@@ -152,6 +181,21 @@ struct MonolithView: View {
             }
             if let error = service.lastError { Section { Label(error, systemImage: "exclamationmark.triangle").foregroundStyle(.orange) } }
         }.formStyle(.grouped).navigationTitle("Monolith")
+        .alert("Couldn’t begin focus", isPresented: Binding(
+            get: { service.lastError != nil },
+            set: { if !$0 { service.lastError = nil } }
+        )) {
+            if !AccessibilityAccess.canControlWindows {
+                Button("Open Accessibility Settings") {
+                    if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
+                        NSWorkspace.shared.open(url)
+                    }
+                }
+            }
+            Button("OK", role: .cancel) { service.lastError = nil }
+        } message: {
+            Text(service.lastError ?? "")
+        }
     }
     private var clock: String { String(format: "%02d:%02d", service.remainingSeconds / 60, service.remainingSeconds % 60) }
 }

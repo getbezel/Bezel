@@ -21,8 +21,10 @@ enum CommandFailure: LocalizedError {
 /// Arguments are passed directly to a known executable; no shell is involved.
 enum CommandRunner {
     static func run(_ executable: URL, arguments: [String], timeout: TimeInterval = 15,
-                    outputLimit: Int = 64 * 1024) async throws -> CommandOutput {
-        let session = CommandSession(executable: executable, arguments: arguments, outputLimit: outputLimit)
+                    outputLimit: Int = 64 * 1024, directory: URL? = nil,
+                    environment: [String: String]? = nil) async throws -> CommandOutput {
+        let session = CommandSession(executable: executable, arguments: arguments, outputLimit: outputLimit,
+                                     directory: directory, environment: environment)
         return try await withTaskCancellationHandler {
             try Task.checkCancellation()
             return try await Task.detached(priority: .utility) {
@@ -47,9 +49,11 @@ private final class CommandSession: @unchecked Sendable {
     private var failure: Error?
     private var didFinish = false
 
-    init(executable: URL, arguments: [String], outputLimit: Int) {
+    init(executable: URL, arguments: [String], outputLimit: Int, directory: URL?, environment: [String: String]?) {
         process.executableURL = executable
         process.arguments = arguments
+        process.currentDirectoryURL = directory
+        if let environment { process.environment = environment }
         process.standardInput = FileHandle.nullDevice
         process.standardOutput = output
         process.standardError = errors

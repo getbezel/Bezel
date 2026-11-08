@@ -89,10 +89,24 @@ actor ClipboardStore {
         return snapshot()
     }
 
-    func remove(_ id: UUID) -> ClipboardSnapshot {
-        history.removeAll { $0 == id }
-        queue.removeAll { $0 == id }
-        payloads[id] = nil
+    func remove(_ id: UUID) -> ClipboardSnapshot { remove(Set([id])) }
+
+    func remove(_ ids: Set<UUID>) -> ClipboardSnapshot {
+        history.removeAll { ids.contains($0) }
+        queue.removeAll { ids.contains($0) }
+        for id in ids { payloads[id] = nil }
+        revision += 1
+        return snapshot()
+    }
+
+    func queuedPayload(for id: UUID) -> ClipboardPayload? {
+        guard queue.contains(id) else { return nil }
+        return payloads[id]
+    }
+
+    func consumeQueued(expectedID: UUID) -> ClipboardSnapshot {
+        if let index = queue.firstIndex(of: expectedID) { queue.remove(at: index) }
+        removeUnreferenced()
         revision += 1
         return snapshot()
     }

@@ -1,0 +1,71 @@
+name: Verify Bezel
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  secret-scan:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Scan repository history
+        shell: bash
+        run: |
+          cd "$RUNNER_TEMP"
+          curl --fail --silent --show-error --location --retry 3 \
+            -o gitleaks.tar.gz https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz
+          echo '551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  gitleaks.tar.gz' | sha256sum --check
+          tar -xzf gitleaks.tar.gz gitleaks
+          cd "$GITHUB_WORKSPACE"
+          "$RUNNER_TEMP/gitleaks" git --redact --no-banner --log-opts='--all' .
+  build-and-test:
+    runs-on: xcode-27
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+      - name: Toolchain
+        run: |
+          xcodebuild -version
+          xcrun swift --version
+          node --version
+      - name: Production-source regression suites
+        run: |
+          mkdir -p Build/CI
+          set -o pipefail
+          ./Scripts/test-all.sh --skip-hardware 2>&1 | tee Build/CI/tests.log
+      - name: Unsigned universal build
+        run: |
+          set -o pipefail
+          xcodebuild -project 'Untitled Project.xcodeproj' -scheme 'Untitled Project' \
+            -configuration Release -destination 'generic/platform=macOS' \
+            -derivedDataPath .build-ci -disableAutomaticPackageResolution \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+            DEVELOPMENT_TEAM= ARCHS='arm64 x86_64' ONLY_ACTIVE_ARCH=NO \
+            build 2>&1 | tee Build/CI/build.log
+      - name: Preserve check logs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: verification-logs
+          path: Build/CI/*.log
+          if-no-files-found: ignore
+          retention-days: 7

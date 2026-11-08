@@ -5,30 +5,40 @@ import AppKit
 struct BezelApp: App {
     @NSApplicationDelegateAdaptor(BezelAppDelegate.self) private var delegate
     @State private var model = BezelModel.shared
+    @Environment(\.openWindow) private var openWindow
 
     var body: some Scene {
         Window("Bezel", id: "main") {
             ContentView(model: model)
-                .frame(minWidth: 980, minHeight: 680)
+                .containerBackground(.ultraThinMaterial, for: .window)
+                .frame(minWidth: 900, minHeight: 600)
                 .onAppear { model.start() }
                 .onOpenURL { model.handle(url: $0) }
         }
-        .defaultSize(width: 1180, height: 800)
+        .defaultSize(width: 1120, height: 780)
+        .windowResizability(.contentMinSize)
         .windowStyle(.hiddenTitleBar)
         .windowToolbarStyle(.unified)
         .commands {
             CommandGroup(replacing: .appInfo) {
                 Button("About Bezel") {
-                    NSApp.orderFrontStandardAboutPanel(options: [
-                        .applicationName: "Bezel", .applicationVersion: "1.0",
-                        .credits: NSAttributedString(string: "A little more possibility. A lot more Mac.")
-                    ])
+                    openWindow(id: "about")
                 }
             }
             CommandMenu("Tools") {
                 Button("Open Clipboard") { model.stack.showHUD() }
                 Button("Capture Text with Lens") { model.lens.startCapture() }
+                Button("Start Cleaning Mode") {
+                    model.selection = .cleaning
+                    openWindow(id: "main")
+                    model.cleaning.start()
+                }
                 Button("Show File Shelf") { model.shelf.show() }
+                Button("Convert Files with DragWheel…") {
+                    model.selection = .dragWheel
+                    openWindow(id: "main")
+                    model.dragWheel.chooseFiles()
+                }
                 Divider()
                 Button(model.monolith.isActive ? "End Focus Session" : "Start 25-Minute Focus") {
                     model.monolith.isActive ? model.monolith.stop() : model.monolith.start(minutes: 25)
@@ -39,7 +49,14 @@ struct BezelApp: App {
             BezelMenuView(model: model)
         }
         .menuBarExtraStyle(.window)
-        Settings { BezelSettingsView(model: model) }
+        Window("About Bezel", id: "about") {
+            BezelLegalView().frame(width: 620, height: 600)
+        }
+        .windowResizability(.contentSize)
+        Settings {
+            BezelSettingsView(model: model)
+                .containerBackground(.ultraThinMaterial, for: .window)
+        }
     }
 }
 

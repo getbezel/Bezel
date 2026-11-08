@@ -21,7 +21,7 @@ final class AirBridgeChannel: Identifiable {
 
     init(process: AirBridgeProcess, defaultOutputID: AudioDeviceID) {
         self.id = process.id
-        icon = NSRunningApplication(processIdentifier: process.pid)?.icon
+        icon = process.applicationURL.map { NSWorkspace.shared.icon(forFile: $0.path) } ?? NSRunningApplication(processIdentifier: process.pid)?.icon
         self.process = process
         primaryOutputID = defaultOutputID
     }
@@ -137,7 +137,7 @@ final class AirBridgeService {
         Task { [weak self, weak channel] in
             guard let channel, channel.operationID == operation, self?.isStarted == true, self?.isSuspended == false else { return }
             do {
-                let state = try await engine.start(processID: channel.id, outputs: targets, gain: channel.gain, operationID: operation)
+                let state = try await engine.start(processID: channel.id, processIDs: channel.process.captureProcessIDs, outputs: targets, gain: channel.gain, operationID: operation)
                 guard channel.operationID == operation, self?.isStarted == true else {
                     await engine.stop(processID: channel.id, operationID: operation)
                     return
@@ -195,7 +195,7 @@ final class AirBridgeService {
                 }
                 return AirBridgeChannel(process: process, defaultOutputID: defaultOutput)
             }
-            let failures = await engine.validate(processIDs: Set(snapshot.processes.map(\.id)))
+            let failures = await engine.validate(processes: snapshot.processes)
             guard isStarted, !Task.isCancelled else { return }
             for channel in channels {
                 if let failure = failures[channel.id], channel.operationID == failure.operationID {

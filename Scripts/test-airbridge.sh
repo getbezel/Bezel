@@ -9,9 +9,9 @@ xcrun swiftc \
     -swift-version 6 \
     -target "$(uname -m)-apple-macos15.0" \
     -O \
-    "$bezel_root/MyApp/Modules/AirBridge/AudioHardwareAccess.swift" \
-    "$bezel_root/MyApp/Modules/AirBridge/AudioSpectrum.swift" \
-    "$bezel_root/MyApp/Modules/AirBridge/AudioRouteEngine.swift" \
+    "$bezel_root/Untitled Project/Modules/AirBridge/AudioHardwareAccess.swift" \
+    "$bezel_root/Untitled Project/Modules/AirBridge/AudioSpectrum.swift" \
+    "$bezel_root/Untitled Project/Modules/AirBridge/AudioRouteEngine.swift" \
     "$bezel_root/Tests/AirBridge/RenderTests.swift" \
     -o "$bezel_test_build/airbridge-tests"
 

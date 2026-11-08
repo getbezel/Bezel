@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "Bezel · Spotify Ad Speed Prototype",
+  "version": "0.1.0",
+  "description": "Experimental 10× and mute controller. Reports measured media progress; restores the original speed and mute state.",
+  "minimum_chrome_version": "111",
+  "content_scripts": [{
+    "matches": ["https://open.spotify.com/*"],
+    "js": ["bezel-ad-speed.js"],
+    "run_at": "document_start",
+    "world": "MAIN",
+    "all_frames": false
+  }]
+}

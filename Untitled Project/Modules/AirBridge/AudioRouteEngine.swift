@@ -10,6 +10,9 @@ final class AirBridgeRenderState: @unchecked Sendable {
     let peakBits = Atomic<UInt32>(0)
     let callbackCount = Atomic<UInt64>(0)
     let invalidFormat = Atomic<Bool>(false)
+    let lastInputFrameCount = Atomic<UInt32>(0)
+    let lastOutputFrameCount = Atomic<UInt32>(0)
+    let inputPeakBits = Atomic<UInt32>(0)
     let inputChannelOffset: Int
     let expectedInputChannels: Int
     let outputChannelCount: Int
@@ -91,6 +94,10 @@ final class AirBridgeRenderState: @unchecked Sendable {
             spectrum.clear()
             return
         }
+        lastInputFrameCount.store(UInt32(clamping: frames), ordering: .relaxed)
+        if let buffer = outputs.first(where: { $0.mNumberChannels > 0 && $0.mData != nil }) {
+            lastOutputFrameCount.store(buffer.mDataByteSize / (4 * buffer.mNumberChannels), ordering: .relaxed)
+        }
         for buffer in outputs where buffer.mNumberChannels > 0 && buffer.mData != nil {
             frames = min(frames, Int(buffer.mDataByteSize) / (4 * Int(buffer.mNumberChannels)))
         }
@@ -99,13 +106,16 @@ final class AirBridgeRenderState: @unchecked Sendable {
         let startingGain = smoothedGain
         let gainStep = (targetGain - startingGain) / Float(frames)
         var analysisGain = startingGain
+        var inputPeak: Float = 0
         for frame in 0..<frames {
             analysisGain += gainStep
             let l = left[frame * leftStride]
             let r = right[frame * rightStride]
+            if l.isFinite { inputPeak = max(inputPeak, abs(l)) }; if r.isFinite { inputPeak = max(inputPeak, abs(r)) }
             spectrum.offer(left: l.isFinite ? min(1, max(-1, l * analysisGain)) : 0,
                            right: r.isFinite ? min(1, max(-1, r * analysisGain)) : 0)
         }
+        inputPeakBits.store(inputPeak.bitPattern, ordering: .relaxed)
         var peak: Float = 0
         var outputOffset = 0
         for buffer in outputs {
@@ -144,10 +154,12 @@ private let airBridgeIOProc: AudioDeviceIOProc = { _, _, input, _, output, _, co
 private final class AirBridgeRoute {
     let operationID: UUID
     let processID: AudioObjectID
+    private var processIDs: Set<AudioObjectID>
     let outputs: [AirBridgeDevice]
     let renderState: AirBridgeRenderState
     let inputFormats: [AudioStreamBasicDescription]
     let outputFormats: [AudioStreamBasicDescription]
+    let clockRate: Double
     private var tapID: AudioObjectID
     private let tapDescription: CATapDescription
     private var aggregateID: AudioObjectID
@@ -157,12 +169,13 @@ private final class AirBridgeRoute {
     private var lastCallbackCount: UInt64 = 0
     private var lastCallbackProgress = ContinuousClock.now
 
-    init(processID: AudioObjectID, outputs: [AirBridgeDevice], gain: Float, operationID: UUID) throws {
+    init(processID: AudioObjectID, processIDs: [AudioObjectID], outputs: [AirBridgeDevice], gain: Float, operationID: UUID) throws {
         guard !outputs.isEmpty, outputs.count <= 2 else { throw AirBridgeError.noOutput }
         self.operationID = operationID
         self.processID = processID
+        self.processIDs = Set(processIDs)
         self.outputs = outputs
-        let description = CATapDescription(stereoMixdownOfProcesses: [processID])
+        let description = CATapDescription(stereoMixdownOfProcesses: processIDs)
         description.name = "Bezel application audio"
         description.isPrivate = true
         description.muteBehavior = .mutedWhenTapped
@@ -179,6 +192,7 @@ private final class AirBridgeRoute {
         do {
             let tapFormat = try AirBridgeHAL.scalar(tap, kAudioTapPropertyFormat, initial: AudioStreamBasicDescription())
             guard AirBridgeHAL.isSupported(tapFormat), tapFormat.mChannelsPerFrame == 2 else { throw AirBridgeError.unsupportedFormat }
+            guard let tapUID = AirBridgeHAL.string(tap, kAudioTapPropertyUID) else { throw AirBridgeError.noTapStream }
             let composition: [String: Any] = [
                 kAudioAggregateDeviceNameKey: "Bezel AirBridge",
                 kAudioAggregateDeviceUIDKey: "dev.bezel.airbridge.\(UUID().uuidString)",
@@ -188,20 +202,27 @@ private final class AirBridgeRoute {
                 // Starting must never wait for an application to produce its first sample.
                 kAudioAggregateDeviceTapAutoStartKey: false,
                 kAudioAggregateDeviceSubDeviceListKey: outputs.enumerated().map { index, device in
-                    [kAudioSubDeviceUIDKey: device.uid, kAudioSubDeviceDriftCompensationKey: index != 0] as [String: Any]
+                    [kAudioSubDeviceUIDKey: device.uid, kAudioSubDeviceDriftCompensationKey: index != 0,
+                     kAudioSubDeviceDriftCompensationQualityKey: kAudioAggregateDriftCompensationMaxQuality] as [String: Any]
                 },
-                kAudioAggregateDeviceTapListKey: [[kAudioSubTapUIDKey: description.uuid.uuidString, kAudioSubTapDriftCompensationKey: true]]
+                kAudioAggregateDeviceTapListKey: [[kAudioSubTapUIDKey: tapUID, kAudioSubTapDriftCompensationKey: true,
+                                                     kAudioSubTapDriftCompensationQualityKey: kAudioAggregateDriftCompensationMaxQuality]]
             ]
             try AirBridgeHAL.check(AudioHardwareCreateAggregateDevice(composition as CFDictionary, &aggregate), "Creating private audio route")
             let inputs = try AirBridgeHAL.formats(aggregate, scope: kAudioDevicePropertyScopeInput)
             let outputStreams = try AirBridgeHAL.formats(aggregate, scope: kAudioDevicePropertyScopeOutput)
             guard let lastInput = inputs.last, lastInput.format.mChannelsPerFrame == 2,
                   AirBridgeHAL.isSupported(lastInput.format), !outputStreams.isEmpty else { throw AirBridgeError.noTapStream }
-            guard outputStreams.allSatisfy({ AirBridgeHAL.isSupported($0.format) && abs($0.format.mSampleRate - lastInput.format.mSampleRate) < 1 }),
+            guard outputStreams.allSatisfy({ AirBridgeHAL.isSupported($0.format) }),
                   outputStreams.reduce(0, { $0 + Int($1.format.mChannelsPerFrame) }) == outputs.reduce(0, { $0 + $1.outputChannels }),
                   outputs.reduce(0, { $0 + $1.outputChannels }) <= 128 else { throw AirBridgeError.unsupportedFormat }
+            // Every IOProc buffer runs on the aggregate's master clock. CoreAudio
+            // converts tap/secondary-device rates through drift compensation;
+            // stream ASBDs can still report their original 48/44.1 kHz rates.
+            let rate = try AirBridgeHAL.scalar(aggregate, kAudioDevicePropertyNominalSampleRate, initial: Float64(0))
+            guard rate.isFinite, rate > 0 else { throw AirBridgeError.unsupportedFormat }
             let inputChannels = inputs.reduce(0) { $0 + Int($1.format.mChannelsPerFrame) }
-            let state = AirBridgeRenderState(gain: gain, inputChannelOffset: inputChannels - 2, expectedInputChannels: inputChannels, outputDevices: outputs, sampleRate: lastInput.format.mSampleRate)
+            let state = AirBridgeRenderState(gain: gain, inputChannelOffset: inputChannels - 2, expectedInputChannels: inputChannels, outputDevices: outputs, sampleRate: rate)
             acquiredState = state
             try AirBridgeHAL.check(AudioDeviceCreateIOProcID(aggregate, airBridgeIOProc, Unmanaged.passUnretained(state).toOpaque(), &createdProc), "Creating audio playback callback")
             guard let createdProc else { throw AirBridgeError.noCallbacks }
@@ -226,12 +247,13 @@ private final class AirBridgeRoute {
             }
             listener = onFormatChanged
             let watched = (inputs + outputStreams).map { ($0.id, kAudioStreamPropertyVirtualFormat) } +
-                outputs.map { ($0.id, kAudioDevicePropertyDeviceIsAlive) }
+                outputs.map { ($0.id, kAudioDevicePropertyDeviceIsAlive) } + [(aggregate, kAudioDevicePropertyNominalSampleRate)]
             for (object, selector) in watched {
                 var watchedProperty = AirBridgeHAL.address(selector)
                 try AirBridgeHAL.check(AudioObjectAddPropertyListenerBlock(object, &watchedProperty, nil, onFormatChanged), "Monitoring audio stream format")
                 registeredProperties.append((object, watchedProperty))
             }
+            clockRate = rate
             renderState = state
             inputFormats = inputs.map(\.format)
             outputFormats = outputStreams.map(\.format)
@@ -283,6 +305,19 @@ private final class AirBridgeRoute {
 
     deinit { stop() }
 
+    func updateProcesses(_ ids: [AudioObjectID]) throws {
+        let updated = Set(ids)
+        guard updated != processIDs else { return }
+        guard !updated.isEmpty else { throw AirBridgeError.deviceChanged }
+        tapDescription.processes = updated.sorted()
+        var value = tapDescription
+        var property = AirBridgeHAL.address(kAudioTapPropertyDescription)
+        try AirBridgeHAL.check(withUnsafePointer(to: &value) {
+            AudioObjectSetPropertyData(tapID, &property, 0, nil, UInt32(MemoryLayout<CATapDescription>.size), $0)
+        }, "Updating application audio processes")
+        processIDs = updated
+    }
+
     func checkHealth() throws {
         guard !renderState.invalidFormat.load(ordering: .relaxed) else { throw AirBridgeError.deviceChanged }
         let callbacks = renderState.callbackCount.load(ordering: .relaxed)
@@ -296,6 +331,7 @@ private final class AirBridgeRoute {
             guard (try? AirBridgeHAL.scalar(output.id, kAudioDevicePropertyDeviceIsAlive, initial: UInt32(0))) == 1,
                   AirBridgeHAL.string(output.id, kAudioDevicePropertyDeviceUID) == output.uid else { throw AirBridgeError.deviceChanged }
         }
+        guard try AirBridgeHAL.scalar(aggregateID, kAudioDevicePropertyNominalSampleRate, initial: Float64(0)) == clockRate else { throw AirBridgeError.deviceChanged }
         let newInputs = try AirBridgeHAL.formats(aggregateID, scope: kAudioDevicePropertyScopeInput).map(\.format)
         let newOutputs = try AirBridgeHAL.formats(aggregateID, scope: kAudioDevicePropertyScopeOutput).map(\.format)
         func matches(_ a: [AudioStreamBasicDescription], _ b: [AudioStreamBasicDescription]) -> Bool {
@@ -315,9 +351,9 @@ actor AirBridgeEngine {
         (try AirBridgeHAL.outputDevices(), try AirBridgeHAL.audioProcesses())
     }
 
-    func start(processID: AudioObjectID, outputs: [AirBridgeDevice], gain: Double, operationID: UUID) throws -> AirBridgeRenderState {
+    func start(processID: AudioObjectID, processIDs: [AudioObjectID]? = nil, outputs: [AirBridgeDevice], gain: Double, operationID: UUID) throws -> AirBridgeRenderState {
         routes.removeValue(forKey: processID)?.stop()
-        let route = try AirBridgeRoute(processID: processID, outputs: outputs, gain: Float(gain), operationID: operationID)
+        let route = try AirBridgeRoute(processID: processID, processIDs: processIDs ?? [processID], outputs: outputs, gain: Float(gain), operationID: operationID)
         routes[processID] = route
         return route.renderState
     }
@@ -328,11 +364,13 @@ actor AirBridgeEngine {
     }
     func stopAll() { for route in routes.values { route.stop() }; routes.removeAll() }
 
-    func validate(processIDs: Set<AudioObjectID>) -> [AudioObjectID: AirBridgeRouteFailure] {
+    func validate(processes: [AirBridgeProcess]) -> [AudioObjectID: AirBridgeRouteFailure] {
+        let members = Dictionary(uniqueKeysWithValues: processes.map { ($0.id, $0.captureProcessIDs) })
         var failures: [AudioObjectID: AirBridgeRouteFailure] = [:]
         for (id, route) in routes {
             do {
-                guard processIDs.contains(id) else { throw AirBridgeError.deviceChanged }
+                guard let ids = members[id] else { throw AirBridgeError.deviceChanged }
+                try route.updateProcesses(ids)
                 try route.checkHealth()
             } catch { failures[id] = AirBridgeRouteFailure(operationID: route.operationID, message: error.localizedDescription) }
         }

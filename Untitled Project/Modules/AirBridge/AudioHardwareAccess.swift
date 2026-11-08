@@ -1,5 +1,6 @@
 import AppKit
 import CoreAudio
+import Darwin
 
 struct AirBridgeDevice: Identifiable, Hashable, Sendable {
     let id: AudioDeviceID
@@ -24,6 +25,10 @@ struct AirBridgeProcess: Identifiable, Hashable, Sendable {
     let bundleID: String
     let name: String
     let isOutputActive: Bool
+    var members: [AudioObjectID] = []
+    var applicationURL: URL? = nil
+    var applicationPID: pid_t? = nil
+    var captureProcessIDs: [AudioObjectID] { members.isEmpty ? [id] : members }
 }
 
 struct AirBridgeHardwareError: LocalizedError, Sendable {
@@ -46,7 +51,7 @@ enum AirBridgeError: LocalizedError, Sendable {
 
     var errorDescription: String? {
         switch self {
-        case .unsupportedFormat: "This device’s stream format is not supported. AirBridge requires native 32-bit floating-point PCM."
+        case .unsupportedFormat: "This output exposes an audio format AirBridge can’t route. Choose another output device."
         case .noOutput: "Choose an available audio output."
         case .noTapStream: "Core Audio did not expose the application’s stereo tap stream."
         case .deviceChanged: "The audio device or stream format changed. Normal application audio has been restored. Start the route again."
@@ -115,13 +120,63 @@ enum AirBridgeHAL {
 
     static func audioProcesses() throws -> [AirBridgeProcess] {
         let ownPID = ProcessInfo.processInfo.processIdentifier
-        return try objectIDs(AudioObjectID(kAudioObjectSystemObject), kAudioHardwarePropertyProcessObjectList).compactMap { object in
+        let runningApps = NSWorkspace.shared.runningApplications
+        let raw: [AirBridgeProcess] = try objectIDs(AudioObjectID(kAudioObjectSystemObject), kAudioHardwarePropertyProcessObjectList).compactMap { object in
             guard let pid = try? scalar(object, kAudioProcessPropertyPID, initial: pid_t(0)), pid > 0, pid != ownPID else { return nil }
             let app = NSRunningApplication(processIdentifier: pid)
             let bundle = string(object, kAudioProcessPropertyBundleID) ?? app?.bundleIdentifier ?? ""
             let name = app?.localizedName ?? bundle.split(separator: ".").last.map(String.init) ?? "Process \(pid)"
             let running = (try? scalar(object, kAudioProcessPropertyIsRunningOutput, initial: UInt32(0))) == 1
+            if let executable = app?.executableURL ?? processExecutableURL(pid) ?? app?.bundleURL,
+               let url = outerApplicationURL(executable), let ownerBundle = Bundle(url: url),
+               let ownerID = ownerBundle.bundleIdentifier {
+                let owner = runningApps.first { $0.bundleURL?.standardizedFileURL.path == url.standardizedFileURL.path }
+                let ownerName = owner?.localizedName ?? ownerBundle.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String ??
+                    ownerBundle.object(forInfoDictionaryKey: "CFBundleName") as? String ?? url.deletingPathExtension().lastPathComponent
+                return AirBridgeProcess(id: object, pid: pid, bundleID: ownerID, name: ownerName, isOutputActive: running,
+                                        applicationURL: url, applicationPID: owner?.processIdentifier)
+            }
             return AirBridgeProcess(id: object, pid: pid, bundleID: bundle, name: name, isOutputActive: running)
+        }
+        return groupProcesses(raw)
+    }
+
+    /// Walk to the outer application instead of treating nested renderer/audio
+    /// helper bundles as unrelated apps. Unknown processes stay independent.
+    private static func processExecutableURL(_ pid: pid_t) -> URL? {
+        // Audio-service helpers are often absent from NSRunningApplication.
+        var path = [CChar](repeating: 0, count: 4 * Int(MAXPATHLEN))
+        let length = path.withUnsafeMutableBytes { proc_pidpath(pid, $0.baseAddress, UInt32($0.count)) }
+        guard length > 0 else { return nil }
+        return path.withUnsafeBufferPointer {
+            URL(fileURLWithFileSystemRepresentation: $0.baseAddress!, isDirectory: false, relativeTo: nil)
+        }
+    }
+
+    static func outerApplicationURL(_ executable: URL) -> URL? {
+        guard executable.isFileURL else { return nil }
+        var cursor = executable.standardizedFileURL
+        var result: URL?
+        for _ in 0..<64 {
+            if cursor.pathExtension.lowercased() == "app" { result = cursor }
+            let parent = cursor.deletingLastPathComponent()
+            if parent.path == cursor.path { break }
+            cursor = parent
+        }
+        return result
+    }
+
+    static func groupProcesses(_ raw: [AirBridgeProcess]) -> [AirBridgeProcess] {
+        Dictionary(grouping: raw) { process in
+            process.applicationURL.map { "app:" + $0.standardizedFileURL.path } ?? "process:\(process.pid)"
+        }.values.compactMap { members -> AirBridgeProcess? in
+            guard let first = members.min(by: { $0.id < $1.id }) else { return nil }
+            let ownerPID = members.compactMap(\.applicationPID).first
+            let primary = members.first(where: { $0.pid == ownerPID }) ?? first
+            return AirBridgeProcess(id: primary.id, pid: ownerPID ?? primary.pid, bundleID: primary.bundleID,
+                                    name: primary.name, isOutputActive: members.contains(where: \.isOutputActive),
+                                    members: members.map(\.id).sorted(), applicationURL: primary.applicationURL,
+                                    applicationPID: ownerPID)
         }.sorted {
             if $0.isOutputActive != $1.isOutputActive { return $0.isOutputActive }
             return $0.name.localizedStandardCompare($1.name) == .orderedAscending
@@ -132,7 +187,7 @@ enum AirBridgeHAL {
         format.mFormatID == kAudioFormatLinearPCM && format.mBitsPerChannel == 32 &&
         format.mFormatFlags & kAudioFormatFlagIsFloat != 0 &&
         format.mFormatFlags & kAudioFormatFlagIsBigEndian == 0 &&
-        format.mChannelsPerFrame > 0 && format.mSampleRate > 0 &&
+        format.mChannelsPerFrame > 0 && format.mSampleRate.isFinite && format.mSampleRate > 0 &&
         format.mBytesPerFrame == 4 * (format.mFormatFlags & kAudioFormatFlagIsNonInterleaved == 0 ? format.mChannelsPerFrame : 1)
     }
 }

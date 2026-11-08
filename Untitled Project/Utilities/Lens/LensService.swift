@@ -1,5 +1,7 @@
 import AppKit
 import Observation
+import ImageIO
+import UniformTypeIdentifiers
 import ScreenCaptureKit
 import Vision
 
@@ -11,19 +13,27 @@ final class LensService {
         case capturing = "Freezing the display…"
         case selecting = "Drag to select text"
         case recognizing = "Recognizing text on this Mac…"
+        case saving = "Preparing image for Shelf…"
     }
 
     var phase: Phase = .idle
     var lastResult = ""
     var statusMessage: String?
     var hasScreenRecordingPermission = CGPreflightScreenCaptureAccess()
+    var runtimeBuild = RuntimeBuild.current()
     var isBusy: Bool { phase != .idle }
     @ObservationIgnored private let stack: StackService
     @ObservationIgnored private var panel: LensSelectionPanel?
     @ObservationIgnored private var captureTask: Task<Void, Never>?
     @ObservationIgnored private var requestID = UUID()
+    @ObservationIgnored private var imageConsumer: (@MainActor (Data) -> Void)?
 
     init(stack: StackService) { self.stack = stack }
+
+    func refreshPermission() {
+        runtimeBuild = .current()
+        hasScreenRecordingPermission = CGPreflightScreenCaptureAccess()
+    }
 
     func requestScreenRecordingPermission() {
         hasScreenRecordingPermission = CGRequestScreenCaptureAccess()
@@ -36,19 +46,25 @@ final class LensService {
         NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")!)
     }
 
-    func startCapture() {
+    func startCapture() { beginCapture(imageConsumer: nil) }
+
+    func startImageCapture(onImage: @escaping @MainActor (Data) -> Void) {
+        beginCapture(imageConsumer: onImage)
+    }
+
+    private func beginCapture(imageConsumer: (@MainActor (Data) -> Void)?) {
         guard !isBusy else { return }
-        hasScreenRecordingPermission = CGPreflightScreenCaptureAccess()
-        guard hasScreenRecordingPermission else {
-            requestScreenRecordingPermission()
-            return
-        }
+        refreshPermission()
+        guard !runtimeBuild.diskChanged else { statusMessage = runtimeBuild.accessHelp; return }
+        // The user's capture action goes through ScreenCaptureKit's own authorization.
+        // A stale CoreGraphics preflight must not prevent the framework from trying capture.
         let pointer = NSEvent.mouseLocation
         guard let screen = NSScreen.screens.first(where: { $0.frame.contains(pointer) }) ?? NSScreen.main,
               let number = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber else {
             statusMessage = "No display is available to capture."
             return
         }
+        self.imageConsumer = imageConsumer
         let displayID = number.uint32Value
         let frame = screen.frame
         let scale = screen.backingScaleFactor
@@ -59,7 +75,14 @@ final class LensService {
         captureTask = Task { @MainActor [weak self] in
             guard let self else { return }
             do {
-                let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+                let snapshot: ShareableSnapshot = try await CallbackDeadline.perform(timeout: .seconds(15)) { reply in
+                    SCShareableContent.getExcludingDesktopWindows(false, onScreenWindowsOnly: true) { content, error in
+                        if let error { reply(.failure(error)) }
+                        else if let content { reply(.success(ShareableSnapshot(content: content))) }
+                        else { reply(.failure(LensError.displayUnavailable)) }
+                    }
+                }
+                let content = snapshot.content
                 guard self.requestID == id, !Task.isCancelled else { return }
                 guard let display = content.displays.first(where: { $0.displayID == displayID }) else {
                     throw LensError.displayUnavailable
@@ -71,13 +94,27 @@ final class LensService {
                 configuration.height = Int(frame.height * scale)
                 configuration.showsCursor = false
                 configuration.captureResolution = .best
-                let image = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: configuration)
+                let image: CGImage = try await CallbackDeadline.perform(timeout: .seconds(10)) { reply in
+                    SCScreenshotManager.captureImage(contentFilter: filter, configuration: configuration) { image, error in
+                        if let error { reply(.failure(error)) }
+                        else if let image { reply(.success(image)) }
+                        else { reply(.failure(LensError.encodingFailed)) }
+                    }
+                }
                 guard self.requestID == id, !Task.isCancelled else { return }
+                self.hasScreenRecordingPermission = true
                 self.presentSelection(image: image, frame: frame, requestID: id)
             } catch {
                 guard self.requestID == id else { return }
                 self.phase = .idle
-                self.statusMessage = "Capture failed: \(error.localizedDescription)"
+                self.imageConsumer = nil
+                self.refreshPermission()
+                let nativeError = error as NSError
+                if nativeError.domain == SCStreamErrorDomain && nativeError.code == SCStreamError.Code.userDeclined.rawValue {
+                    self.statusMessage = "ScreenCaptureKit denied this running build. \(self.runtimeBuild.accessHelp)"
+                } else {
+                    self.statusMessage = "Capture failed (\(nativeError.domain), \(nativeError.code)): \(error.localizedDescription)"
+                }
             }
         }
     }
@@ -88,6 +125,7 @@ final class LensService {
         captureTask = nil
         closePanel()
         phase = .idle
+        imageConsumer = nil
     }
 
     func copyResult() {
@@ -105,7 +143,7 @@ final class LensService {
         panel.backgroundColor = .clear
         panel.hasShadow = false
         panel.isOpaque = true
-        let selection = LensSelectionView(frame: NSRect(origin: .zero, size: frame.size), image: image)
+        let selection = LensSelectionView(frame: NSRect(origin: .zero, size: frame.size), image: image, capturingImage: imageConsumer != nil)
         selection.onCancel = { [weak self] in self?.cancelCapture() }
         selection.onSelect = { [weak self] rect in
             guard let self, self.requestID == requestID else { return }
@@ -115,10 +153,15 @@ final class LensService {
             self.closePanel()
             guard let cropped = image.cropping(to: crop) else {
                 self.phase = .idle
+                self.imageConsumer = nil
                 self.statusMessage = "Select a larger area and try again."
                 return
             }
-            self.recognize(cropped, requestID: requestID)
+            if let consumer = self.imageConsumer {
+                self.saveImage(cropped, requestID: requestID, consumer: consumer)
+            } else {
+                self.recognize(cropped, requestID: requestID)
+            }
         }
         panel.contentView = selection
         self.panel = panel
@@ -133,6 +176,36 @@ final class LensService {
         panel?.orderOut(nil)
         panel?.contentView = nil
         panel = nil
+    }
+
+    private func saveImage(_ image: CGImage, requestID: UUID, consumer: @escaping @MainActor (Data) -> Void) {
+        phase = .saving
+        captureTask = Task { @MainActor [weak self] in
+            let worker = Task.detached(priority: .userInitiated) { () throws -> Data in
+                try Task.checkCancellation()
+                let data = NSMutableData()
+                guard let destination = CGImageDestinationCreateWithData(data, UTType.png.identifier as CFString, 1, nil) else {
+                    throw LensError.encodingFailed
+                }
+                CGImageDestinationAddImage(destination, image, nil)
+                guard CGImageDestinationFinalize(destination) else { throw LensError.encodingFailed }
+                try Task.checkCancellation()
+                return data as Data
+            }
+            do {
+                let data = try await withTaskCancellationHandler { try await worker.value } onCancel: { worker.cancel() }
+                guard let self, self.requestID == requestID, !Task.isCancelled else { return }
+                self.phase = .idle
+                self.imageConsumer = nil
+                self.statusMessage = "Image captured for Shelf."
+                consumer(data)
+            } catch {
+                guard let self, self.requestID == requestID else { return }
+                self.phase = .idle
+                self.imageConsumer = nil
+                self.statusMessage = "Image capture failed: \(error.localizedDescription)"
+            }
+        }
     }
 
     private func recognize(_ image: CGImage, requestID: UUID) {
@@ -198,8 +271,13 @@ final class LensService {
 }
 
 private enum LensError: LocalizedError {
-    case displayUnavailable
-    var errorDescription: String? { "The selected display disconnected before capture." }
+    case displayUnavailable, encodingFailed
+    var errorDescription: String? {
+        switch self {
+        case .displayUnavailable: "The selected display disconnected before capture."
+        case .encodingFailed: "The selected image could not be saved."
+        }
+    }
 }
 
 @MainActor
@@ -215,11 +293,13 @@ private final class LensSelectionView: NSView {
     private let image: NSImage
     private var startPoint: NSPoint?
     private var selectedRect: NSRect?
+    private let prompt: String
 
-    init(frame: NSRect, image: CGImage) {
+    init(frame: NSRect, image: CGImage, capturingImage: Bool) {
+        prompt = capturingImage ? "Drag to capture an image · Esc to cancel" : "Drag to capture text · Esc to cancel"
         self.image = NSImage(cgImage: image, size: frame.size)
         super.init(frame: frame)
-        setAccessibilityLabel("Screen text selection. Drag to select an area, or press Escape to cancel.")
+        setAccessibilityLabel(prompt)
     }
 
     required init?(coder: NSCoder) { nil }
@@ -268,7 +348,6 @@ private final class LensSelectionView: NSView {
             border.lineWidth = 1
             border.stroke()
         }
-        let prompt = "Drag to capture text · Esc to cancel"
         let attributes: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 14, weight: .medium), .foregroundColor: NSColor.white]
         let size = (prompt as NSString).size(withAttributes: attributes)
         let promptRect = NSRect(x: (bounds.width - size.width) / 2, y: bounds.height - 96, width: size.width, height: size.height)
@@ -276,4 +355,9 @@ private final class LensSelectionView: NSView {
         NSBezierPath(roundedRect: promptRect.insetBy(dx: -18, dy: -12), xRadius: 20, yRadius: 20).fill()
         (prompt as NSString).draw(in: promptRect, withAttributes: attributes)
     }
+}
+
+/// ScreenCaptureKit delivers an immutable snapshot with read-only display/app arrays.
+private struct ShareableSnapshot: @unchecked Sendable {
+    let content: SCShareableContent
 }

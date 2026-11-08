@@ -73,7 +73,7 @@ final class MenuBarManager: NSObject {
     }
 
     func refresh() {
-        guard AXIsProcessTrusted() else {
+        guard AccessibilityAccess.canControlWindows else {
             lastError = "Enable Accessibility in Bezel’s Privacy settings to read and open other apps’ menu icons."
             return
         }
@@ -107,7 +107,7 @@ final class MenuBarManager: NSObject {
         guard isEnabled, toggleItem != nil else { return }
         lastError = nil
         if usesNativeVisibility {
-            guard AXIsProcessTrusted() else { refresh(); return }
+            guard AccessibilityAccess.canControlWindows else { refresh(); return }
             guard !hiddenBundles.isEmpty else { showShelf(); return }
             applyNativeRestriction()
         } else {
@@ -139,7 +139,7 @@ final class MenuBarManager: NSObject {
     }
 
     private func applyNativeRestriction() {
-        guard isEnabled, AXIsProcessTrusted(), BezelMenuVisibilityAvailable() else {
+        guard isEnabled, AccessibilityAccess.canControlWindows, BezelMenuVisibilityAvailable() else {
             expand()
             lastError = "Menu icon collapse is unavailable with this macOS menu-bar interface."
             return
@@ -189,7 +189,7 @@ final class MenuBarManager: NSObject {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(2))
                 guard let self, !Task.isCancelled, self.isCollapsed else { return }
-                if !AXIsProcessTrusted() {
+                if !AccessibilityAccess.canControlWindows {
                     self.expand()
                     self.lastError = "Accessibility access was removed. Menu icons have been restored."
                     return

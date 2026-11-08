@@ -14,6 +14,7 @@ struct BezelSettingsView: View {
                 Section("Background utilities") {
                     Toggle("Clipboard history", isOn: $model.stack.isEnabled)
                     Toggle("File shelf at screen edges", isOn: $model.shelf.isEnabled)
+                    Toggle("DragWheel file conversions", isOn: $model.dragWheel.isEnabled)
                     Toggle("Aperture overlay", isOn: $model.aperture.isEnabled)
                 }
                 Section("Menu icons") { MenuBarManagerControls(manager: model.menuShelf.manager) }
@@ -36,8 +37,8 @@ struct BezelSettingsView: View {
                 }
                 Section("Capture & collect") {
                     LabeledContent("Open Stack", value: "⌥⌘V")
-                    LabeledContent("Copy to sequential queue", value: "⇧⌘C")
-                    LabeledContent("Paste next from queue", value: "⇧⌘V")
+                    LabeledContent("Copy selection to Quick Clips", value: "⇧⌘C")
+                    LabeledContent("Choose a clip to paste", value: "⇧⌘V")
                     LabeledContent("Capture text with Lens", value: "⇧⌘2")
                 }
                 Section {
@@ -50,7 +51,10 @@ struct BezelSettingsView: View {
                     }
                 }
             }.formStyle(.grouped).tabItem { Label("Shortcuts", systemImage: "keyboard") }
+            BezelLegalView().tabItem { Label("About & Legal", systemImage: "info.circle") }
         }.frame(width: 580, height: 560).padding(12)
+            .scrollContentBackground(.hidden).background(BezelBackdrop())
+            .buttonStyle(BezelActionStyle())
             .onAppear { model.permissions.refresh() }
     }
 }
@@ -73,9 +77,11 @@ struct PermissionSheet: View {
             HStack {
                 Button("Refresh") { permissions.refresh() }
                 Spacer()
-                Button("Done") { dismiss() }.buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
+                Button("Done") { dismiss() }.buttonStyle(BezelActionStyle(prominent: true)).keyboardShortcut(.defaultAction)
             }.padding(22)
-        }.frame(width: 600, height: 560).onAppear { permissions.refresh() }
+        }.frame(width: 600, height: 560)
+            .scrollContentBackground(.hidden).background(BezelBackdrop())
+            .buttonStyle(BezelActionStyle()).onAppear { permissions.refresh() }
     }
 }
 
@@ -84,17 +90,28 @@ private struct PermissionDetails: View {
     var body: some View {
         Form {
             Section {
-                permissionRow(title: "Accessibility", detail: "Tile windows, highlight the active window, dim the background, and paste from Stack.", symbol: "figure.arms.open", granted: permissions.accessibility) { permissions.requestAccessibility() }
+                permissionRow(title: "Accessibility", detail: "Tile windows, highlight the active window, and dim the background.", symbol: "figure.arms.open", granted: permissions.accessibility) { permissions.requestAccessibility() }
+                permissionRow(title: "Keyboard Commands", detail: "Copy selections and paste Quick Clips into another app. macOS checks this separately from window access.", symbol: "keyboard", granted: permissions.keyboardEvents) { permissions.requestKeyboardEvents() }
+                Text(permissions.accessibilityDiagnostic).font(.caption).foregroundStyle(.secondary)
+                Button("Check Access") { permissions.refresh() }
                 permissionRow(title: "Screen Recording", detail: "Capture a region when you invoke Lens. Text recognition runs locally with Apple Vision.", symbol: "viewfinder", granted: permissions.screenCapture) { permissions.requestScreenCapture() }
             } footer: {
-                Text("After changing permissions in System Settings, return to Bezel and refresh. macOS may ask you to restart the app.")
+                Text("The button opens macOS settings; it cannot grant access itself. Bezel checks access automatically when you return.")
+            }
+            Section("This running app") {
+                Text(permissions.runtimeBuild.appPath).font(.caption.monospaced()).textSelection(.enabled)
+                Text(permissions.runtimeBuild.accessHelp).font(.caption).foregroundStyle(.secondary)
+                HStack {
+                    Button("Show This App in Finder") { permissions.runtimeBuild.showInFinder() }
+                    Button("Quit Bezel") { NSApp.terminate(nil) }
+                }
             }
             Section("Audio access") {
                 Label("AirBridge asks when you start your first route.", systemImage: "waveform")
                 Text("Select an emitting app and an output device, then choose Start Routing. Permission is managed by macOS under Screen & System Audio Recording.").font(.caption).foregroundStyle(.secondary)
             }
             Section("Player connections") {
-                Text("Connect Apple Music or Spotify in Aperture to allow current-track details and playback controls through macOS Automation. These connections are optional. Spotify album artwork is downloaded from Spotify’s image servers only when you enable it.")
+                Text("Connect Apple Music, Spotify or YouTube Music in Chrome or Brave in Aperture to allow current-track details and playback controls through macOS Automation. These connections are optional. Spotify and YouTube Music artwork is downloaded only when its respective option is enabled. Browser connections read page content only from music.youtube.com and needs Allow JavaScript from Apple Events.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             Section("Your data stays here") {
@@ -113,7 +130,7 @@ private struct PermissionDetails: View {
             }
             Spacer(minLength: 10)
             if granted { Label("Allowed", systemImage: "checkmark.circle.fill").font(.caption).foregroundStyle(.green) }
-            else { Button("Enable", action: action).controlSize(.small) }
+            else { Button("Open Settings…", action: action).controlSize(.small) }
         }.padding(.vertical, 7)
     }
 }

@@ -24,7 +24,7 @@ import CoreAudio
         let value = UnsafeMutableAudioBufferListPointer(list)[buffer]
         return Array(UnsafeBufferPointer(start: value.mData!.assumingMemoryBound(to: Float.self), count: Int(value.mDataByteSize) / 4))
     }
-    static func main() throws {
+    static func main() async throws {
         let stereo = AirBridgeDevice(id: 1, uid: "test", name: "Test", outputChannels: 2, transport: 0)
         let mono = AirBridgeDevice(id: 2, uid: "mono", name: "Mono", outputChannels: 1, transport: 0)
         let state = AirBridgeRenderState(gain: 1, inputChannelOffset: 1, expectedInputChannels: 3, outputDevices: [stereo, mono])
@@ -95,7 +95,52 @@ import CoreAudio
             for _ in 0..<4_800 { spectrum.offer(left: .nan, right: .infinity) }
             precondition(spectrum.bands.allSatisfy { $0 == 0 }, "Nonfinite input must not generate false frequency activity")
         }
+        let appURL = URL(fileURLWithPath: "/Applications/Browser.app")
+        precondition(AirBridgeHAL.outerApplicationURL(appURL.appendingPathComponent("Contents/Frameworks/Helper.app/Contents/MacOS/helper"))?.path == appURL.path,
+                     "Nested audio helpers must resolve to the outer application")
+        let main = AirBridgeProcess(id: 10, pid: 100, bundleID: "test.browser", name: "Browser", isOutputActive: false, applicationURL: appURL, applicationPID: 100)
+        let helper = AirBridgeProcess(id: 11, pid: 101, bundleID: "test.browser", name: "Browser", isOutputActive: true, applicationURL: appURL, applicationPID: 100)
+        let unrelated = AirBridgeProcess(id: 12, pid: 102, bundleID: "test.browser.helper", name: "helper", isOutputActive: false)
+        let grouped = AirBridgeHAL.groupProcesses([helper, main, unrelated])
+        precondition(grouped.count == 2 && grouped[0].id == 10 && grouped[0].pid == 100 && grouped[0].isOutputActive,
+                     "An active browser helper must activate the stable parent row without merging unknown helpers")
+        precondition(grouped[0].captureProcessIDs == [10, 11], "Routing the parent must capture all of its audio helpers")
+        print("PASS: nested-helper application identity, stable parent row selection, active-state merging and full application tap membership")
         print("PASS: stereo, mono and stereo mirroring, planar channels, input exclusion, NaN handling, gain ramps, clipping, bounded buffers, null input, format-change silence, and real stereo FFT frequency bands")
+        if CommandLine.arguments.contains("--check-active-route") {
+            let engine = AirBridgeEngine()
+            do {
+                let snapshot = try await engine.discover()
+                guard let process = snapshot.processes.first(where: \.isOutputActive) else {
+                    print("SKIP live route: no app is currently emitting audio")
+                    return
+                }
+                let defaultID = try AirBridgeHAL.scalar(AudioObjectID(kAudioObjectSystemObject), kAudioHardwarePropertyDefaultOutputDevice, initial: AudioDeviceID(0))
+                guard let output = snapshot.devices.first(where: { $0.id == defaultID }) else {
+                    print("SKIP live route: current output is unavailable")
+                    return
+                }
+                let before = try AirBridgeHAL.formats(output.id, scope: kAudioDevicePropertyScopeOutput).map(\.format.mSampleRate)
+                let operation = UUID()
+                let state = try await engine.start(processID: process.id, processIDs: process.captureProcessIDs,
+                                                   outputs: [output], gain: 1, operationID: operation)
+                try await Task.sleep(for: .seconds(1))
+                let callbacks = state.callbackCount.load(ordering: .relaxed)
+                let inputPeak = Float(bitPattern: state.inputPeakBits.load(ordering: .relaxed))
+                let peak = state.peak
+                let valid = !state.invalidFormat.load(ordering: .relaxed)
+                let failures = await engine.validate(processes: snapshot.processes)
+                await engine.stop(processID: process.id, operationID: operation)
+                let after = try AirBridgeHAL.formats(output.id, scope: kAudioDevicePropertyScopeOutput).map(\.format.mSampleRate)
+                precondition(callbacks > 0 && valid && failures.isEmpty, "The current output must deliver healthy live buffers")
+                precondition(before == after, "Routing must not change the physical output's stream rate")
+                if inputPeak > 0.00001 { precondition(abs(inputPeak - peak) < 0.0001, "Unity routing must preserve the live peak") }
+                print("PASS live route: \(process.name), \(process.captureProcessIDs.count) audio processes, \(output.name), \(callbacks) callbacks, input peak \(inputPeak), output peak \(peak); original audio restored, device rates unchanged")
+            } catch {
+                await engine.stopAll()
+                throw error
+            }
+        }
         if !CommandLine.arguments.contains("--skip-hardware") {
             let devices = try AirBridgeHAL.outputDevices()
             let processes = try AirBridgeHAL.audioProcesses()

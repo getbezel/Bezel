@@ -1,0 +1,6 @@
+// Keep account-specific settings in the ignored Local.xcconfig.
+BEZEL_DEVELOPMENT_TEAM =
+BEZEL_GOOGLE_CLIENT_ID =
+BEZEL_GOOGLE_CALLBACK_SCHEME = com.bezel.utility.google.unconfigured
+#include? "Local.xcconfig"
+DEVELOPMENT_TEAM = $(BEZEL_DEVELOPMENT_TEAM)

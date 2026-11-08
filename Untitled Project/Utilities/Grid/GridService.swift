@@ -15,7 +15,7 @@ enum FocusedWindowAccess {
     static var lastExternalPID: pid_t?
 
     static func current(preferExternal: Bool = false) -> Window? {
-        guard AXIsProcessTrusted() else { return nil }
+        guard AccessibilityAccess.canControlWindows else { return nil }
         var app = NSWorkspace.shared.frontmostApplication
         if preferExternal, app?.processIdentifier == ProcessInfo.processInfo.processIdentifier,
            let pid = lastExternalPID {
@@ -141,8 +141,8 @@ final class GridService {
 
     private func apply(_ unit: CGRect, title: String) {
         lastError = nil
-        guard AXIsProcessTrusted() else {
-            lastError = "Enable Bezel in System Settings → Privacy & Security → Accessibility to arrange windows."
+        guard AccessibilityAccess.canControlWindows else {
+            lastError = "macOS is blocking window access for this copy of Bezel. If Bezel is already enabled in Accessibility settings, remove the old entry and add the app shown in Bezel Settings → Privacy → Show This App in Finder."
             return
         }
         guard let window = FocusedWindowAccess.current(preferExternal: true) else {
@@ -225,5 +225,20 @@ struct GridView: View {
             if let action = service.lastAction { Section { Label(action, systemImage: "checkmark.circle").foregroundStyle(.secondary) } }
             if let error = service.lastError { Section { Label(error, systemImage: "exclamationmark.triangle").foregroundStyle(.orange) } }
         }.formStyle(.grouped).navigationTitle("Grid")
+        .alert("Couldn’t arrange this window", isPresented: Binding(
+            get: { service.lastError != nil },
+            set: { if !$0 { service.lastError = nil } }
+        )) {
+            if !AccessibilityAccess.canControlWindows {
+                Button("Open Accessibility Settings") {
+                    if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
+                        NSWorkspace.shared.open(url)
+                    }
+                }
+            }
+            Button("OK", role: .cancel) { service.lastError = nil }
+        } message: {
+            Text(service.lastError ?? "")
+        }
     }
 }

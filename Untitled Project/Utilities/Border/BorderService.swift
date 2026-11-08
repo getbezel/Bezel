@@ -17,7 +17,7 @@ final class BorderService {
 
     func start() {
         guard !isEnabled else { return }
-        guard AXIsProcessTrusted() else {
+        guard AccessibilityAccess.canControlWindows else {
             lastError = "Enable Accessibility access in System Settings to track the focused window."
             return
         }

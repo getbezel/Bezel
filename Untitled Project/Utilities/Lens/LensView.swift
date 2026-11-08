@@ -1,64 +1,85 @@
 import SwiftUI
+import AppKit
 
 struct LensView: View {
     @Bindable var service: LensService
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 22) {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Text, wherever you see it.").font(.title2.weight(.semibold))
-                    Text("Select a region of your display. Lens recognizes its text locally and sends it straight to Stack.")
-                        .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+                HStack(alignment: .top, spacing: 20) {
+                    ModuleIcon(module: .lens, size: 56)
+                    VStack(alignment: .leading, spacing: 7) {
+                        Text("Text, wherever you see it.").font(.title2.weight(.semibold))
+                        Text("Select part of your display. Lens recognizes the text locally and copies it straight to Stack.")
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 0)
                 }
-                Spacer(minLength: 24)
-                Image(systemName: "viewfinder").font(.system(size: 36, weight: .light)).foregroundStyle(.tint)
-            }
-            HStack(spacing: 12) {
-                Button { service.startCapture() } label: {
-                    Label("Capture Text", systemImage: "text.viewfinder")
-                }
-                .buttonStyle(.borderedProminent).controlSize(.large).disabled(service.isBusy)
-                Text("⇧⌘2").font(.system(.callout, design: .monospaced)).foregroundStyle(.secondary)
-                Spacer()
-                if service.isBusy {
-                    ProgressView().controlSize(.small)
-                    Button("Cancel") { service.cancelCapture() }
-                }
-            }
-            if !service.hasScreenRecordingPermission {
-                HStack(alignment: .top, spacing: 12) {
-                    Image(systemName: "lock.shield").font(.title3).foregroundStyle(.secondary)
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Screen Recording permission").font(.headline)
-                        Text("macOS requires permission to read pixels on your display. Captures are processed on your Mac and discarded after recognition.")
-                            .font(.callout).foregroundStyle(.secondary)
-                        HStack {
-                            Button("Allow Screen Recording") { service.requestScreenRecordingPermission() }
-                            Button("Open System Settings") { service.openPrivacySettings() }
-                        }
+                HStack(spacing: 12) {
+                    Button { service.startCapture() } label: { Label("Capture Text", systemImage: "text.viewfinder") }
+                        .buttonStyle(BezelActionStyle(prominent: true)).controlSize(.large).disabled(service.isBusy)
+                    Text("⇧⌘2").font(.callout.monospaced()).foregroundStyle(.secondary)
+                    Spacer()
+                    if service.isBusy {
+                        ProgressView().controlSize(.small)
+                        Text(service.phase.rawValue).font(.caption).foregroundStyle(.secondary)
+                        Button("Cancel") { service.cancelCapture() }
                     }
                 }
-                .padding(16).background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 12))
-            }
-            if service.lastResult.isEmpty {
-                ContentUnavailableView("Select. Recognize. Copy.", systemImage: "text.viewfinder", description: Text("Use Lens for a screenshot, presentation, video frame, or image containing text."))
-                    .frame(maxWidth: .infinity, minHeight: 240)
-            } else {
-                HStack {
-                    Label("Last capture", systemImage: "text.alignleft").font(.headline)
-                    Spacer()
-                    Button("Copy Again", systemImage: "doc.on.doc") { service.copyResult() }
+                if let message = service.statusMessage {
+                    Label(message, systemImage: "info.circle")
+                        .font(.callout).foregroundStyle(.secondary).textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(15).bezelSurface(cornerRadius: 18)
                 }
-                ScrollView {
-                    Text(service.lastResult).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .topLeading).padding(16)
+                if !service.hasScreenRecordingPermission || service.runtimeBuild.diskChanged {
+                    GroupBox {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Label("Screen Recording permission", systemImage: "lock.shield").font(.headline)
+                            Text("Allow Bezel to read pixels on your display. Recognition stays on this Mac.")
+                                .font(.callout).foregroundStyle(.secondary)
+                            HStack {
+                                Button("Allow Screen Recording") { service.requestScreenRecordingPermission() }
+                                Button("Open System Settings") { service.openPrivacySettings() }
+                                Button("Refresh Access") { service.refreshPermission() }
+                            }
+                            Text(service.runtimeBuild.accessHelp).font(.caption).foregroundStyle(.secondary)
+                            Text(service.runtimeBuild.appPath).font(.caption.monospaced()).textSelection(.enabled)
+                            HStack {
+                                Button("Show This App in Finder") { service.runtimeBuild.showInFinder() }
+                                Button("Quit Bezel") { NSApp.terminate(nil) }
+                            }
+                        }.frame(maxWidth: .infinity, alignment: .leading).padding(10)
+                    }
                 }
-                .frame(minHeight: 200).background(.background, in: RoundedRectangle(cornerRadius: 12))
-                .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.quaternary))
-            }
-            Text(service.statusMessage ?? service.phase.rawValue).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
-            Spacer(minLength: 0)
-        }
-        .padding(24)
+                if service.lastResult.isEmpty {
+                    VStack(spacing: 12) {
+                        Image(systemName: "text.viewfinder").font(.system(size: 46, weight: .light)).foregroundStyle(.tint)
+                        Text("Select. Recognize. Copy.").font(.title3.weight(.semibold))
+                        Text("Screenshots, presentations, video frames, and images.\nDrag a selection to capture only the text you need.")
+                            .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                    }
+                    .frame(maxWidth: .infinity).padding(.vertical, 56)
+                    .bezelSurface(cornerRadius: 26, tint: .indigo)
+                } else {
+                    GroupBox {
+                        VStack(alignment: .leading, spacing: 16) {
+                            HStack {
+                                Label("Last capture", systemImage: "text.alignleft").font(.headline)
+                                Spacer()
+                                Button("Copy Again", systemImage: "doc.on.doc") { service.copyResult() }
+                            }
+                            Text(service.lastResult).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
+                        }.padding(12)
+                    }
+                }
+                if service.statusMessage == nil && !service.isBusy {
+                    Label(service.phase.rawValue, systemImage: "checkmark.circle").font(.caption).foregroundStyle(.secondary)
+                }
+            }.padding(28).frame(maxWidth: 900, alignment: .leading).frame(maxWidth: .infinity, alignment: .topLeading)
+        }.frame(maxWidth: .infinity, maxHeight: .infinity)
+        .onAppear { service.refreshPermission() }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in service.refreshPermission() }
     }
 }

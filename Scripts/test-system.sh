@@ -31,12 +31,13 @@ for kind in ['traversal','absolute','symlink','hardlink','duplicate','device','o
 PY
 /usr/bin/tar --format=7zip -cf "$bezel_test_build/normal.7z" -C "$bezel_test_build/sevenzip-source" hello.txt
 xcrun swiftc -swift-version 6 -target "$(uname -m)-apple-macos15.0" -O \
-    "$bezel_root/MyApp/Core/ScopeRequest.swift" \
-    "$bezel_root/MyApp/Core/SessionCountdown.swift" \
-    "$bezel_root/MyApp/Utilities/Scope/SafeArchive.swift" \
-    "$bezel_root/MyApp/Utilities/Scope/ScopeService.swift" \
-    "$bezel_root/MyApp/Utilities/Scope/ArchiveInspectionView.swift" \
-    "$bezel_root/MyApp/Utilities/Pulse/PulseService.swift" \
+    "$bezel_root/Untitled Project/Core/ScopeRequest.swift" \
+    "$bezel_root/Untitled Project/Core/SessionCountdown.swift" \
+    "$bezel_root/Untitled Project/Design/GlassAppearance.swift" \
+    "$bezel_root/Untitled Project/Utilities/Scope/SafeArchive.swift" \
+    "$bezel_root/Untitled Project/Utilities/Scope/ScopeService.swift" \
+    "$bezel_root/Untitled Project/Utilities/Scope/ArchiveInspectionView.swift" \
+    "$bezel_root/Untitled Project/Utilities/Pulse/PulseService.swift" \
     "$bezel_root/Tests/System/SystemTests.swift" \
     -o "$bezel_test_build/system-tests"
 "$bezel_test_build/system-tests" "$bezel_test_build"

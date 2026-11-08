@@ -156,7 +156,7 @@ struct PulseView: View {
                         if let pid = Int32(processID.trimmingCharacters(in: .whitespaces)) { service.startWatching(pid: pid) }
                         else { service.lastError = "Enter a numeric process ID." }
                     } else { service.start() }
-                }.buttonStyle(.borderedProminent)
+                }.buttonStyle(BezelActionStyle(prominent: true))
             } footer: { Text("Closing the lid, choosing Sleep, or a critically low battery can still put your Mac to sleep.") }
             if let error = service.lastError { Section { Label(error, systemImage: "exclamationmark.triangle").foregroundStyle(.orange) } }
         }.formStyle(.grouped).navigationTitle("Pulse")

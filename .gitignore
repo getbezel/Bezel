@@ -1,5 +1,32 @@
-.build/
+# Build products, local package checkouts and audit output
+.build*/
 Build/
+DerivedData/
+*.xcarchive/
+*.dmg
+*.dSYM/
+*.noindex/
+
+# Per-user Xcode and macOS state
 .DS_Store
 xcuserdata/
 *.xcuserstate
+
+# Tool caches and local credentials
+__pycache__/
+*.py[cod]
+.env
+.env.*
+!.env.example
+*.p12
+*.p8
+*.keychain*
+*.mobileprovision
+*.provisionprofile
+*.log
+
+# Local signing / OAuth identity and machine-specific diagnostics
+Configuration/Local.xcconfig
+Documentation/*Verification.json
+Documentation/SpotifyAdPrototype.json
+Documentation/SpotifyAdblockPreparation.json

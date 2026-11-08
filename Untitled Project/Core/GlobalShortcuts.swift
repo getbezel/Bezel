@@ -25,8 +25,8 @@ final class GlobalShortcuts {
         var name: String {
             switch self {
             case .clipboard: "Open Stack"
-            case .enqueue: "Copy to queue"
-            case .dequeue: "Paste next in queue"
+            case .enqueue: "Copy to Quick Clips"
+            case .dequeue: "Choose a clip to paste"
             case .lens: "Capture text"
             case .tileLeft: "Tile left"
             case .tileRight: "Tile right"

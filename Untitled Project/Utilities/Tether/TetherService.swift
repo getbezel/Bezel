@@ -88,7 +88,7 @@ struct TetherView: View {
                     LabeledContent("Charge limit", value: service.chargeControl.isEnabled ? "\(service.chargeControl.limit ?? 80)%" : "100%")
                     HStack {
                         Button("Limit to 80%", systemImage: "battery.75percent") { service.chargeControl.perform(.limit80) }
-                            .buttonStyle(.borderedProminent)
+                            .buttonStyle(BezelActionStyle(prominent: true))
                         Button("Top Off to 100%", systemImage: "battery.100percent.bolt") { service.chargeControl.perform(.topoff100) }
                             .disabled(!service.chargeControl.isEnabled)
                         if service.chargeControl.isEnabled {

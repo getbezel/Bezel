@@ -55,7 +55,7 @@ struct AirBridgeView: View {
                 }
 
                 if displayedChannels.isEmpty {
-                    ContentUnavailableView("No active audio applications", systemImage: "speaker.slash", description: Text("Play audio in an application to see it here. You can also show inactive applications with an audio connection."))
+                    ContentUnavailableView("No active audio applications", systemImage: "speaker.slash", description: Text("Start playing audio, then wait a moment for the application to appear. Browser audio helpers are grouped under their browser. Show inactive lists applications with an audio connection that are currently silent."))
                         .frame(minHeight: 200)
                 } else {
                     LazyVStack(spacing: 12) {
@@ -101,7 +101,7 @@ private struct AirBridgeChannelView: View {
                 .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(channel.process.name).font(.headline)
-                    Text(channel.isRouting ? "Routed audio" : channel.process.isOutputActive ? "Active output · System routing" : "Inactive audio connection")
+                    Text(channel.isRouting ? (channel.process.isOutputActive ? "Routed audio" : "Route ready · Waiting for audio") : channel.process.isOutputActive ? "Playing audio · System output" : "Not playing audio")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -142,6 +142,7 @@ private struct AirBridgeChannelView: View {
                     .foregroundStyle(.secondary)
                 Slider(value: $channel.gain, in: 0...1) { Text("\(channel.process.name) volume") }
                     .disabled(!channel.isRouting)
+                    .help(channel.isRouting ? "Adjust this application’s routed volume" : "Start Routing to adjust this application’s volume")
                     .accessibilityValue("\(Int(channel.gain * 100)) percent")
                 Text("\(Int(channel.gain * 100))%")
                     .font(.callout.monospacedDigit())
@@ -165,6 +166,10 @@ private struct AirBridgeChannelView: View {
                 .accessibilityValue(channel.isRouting ? channel.decibels : "Not measured")
             }
 
+            if !channel.process.isOutputActive && !channel.isRouting {
+                Text("Play audio in this app to hear its route. Inactive connections are silent until playback starts.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             if let error = channel.error {
                 Label(error, systemImage: "exclamationmark.triangle.fill")
                     .font(.caption)

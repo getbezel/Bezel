@@ -7,6 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+        BA0000000000000000000006 = {isa = PBXBuildFile; productRef = BA0000000000000000000007; };
+        BA0000000000000000000001 = {isa = PBXBuildFile; productRef = BA0000000000000000000003; };
+        BA0000000000000000000002 = {isa = PBXBuildFile; productRef = BA0000000000000000000004; };
 		BC000000000000000000000A /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = BC0000000000000000000001 /* main.m */; };
 		BC000000000000000000000B /* BezelChargeAgent in Embed Charge Agent */ = {isa = PBXBuildFile; fileRef = BC0000000000000000000002 /* BezelChargeAgent */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
 		BF000000000000000000000D /* FinderSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000000000000000000001 /* FinderSync.swift */; };
@@ -52,6 +55,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		BEEF00000000000000000001 /* Bezel.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Configuration/Bezel.xcconfig; sourceTree = "<group>"; };
 		000000000000000000000120 /* Bezel.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Bezel.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		BC0000000000000000000001 /* main.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = main.m; sourceTree = "<group>"; };
 		BC0000000000000000000002 /* BezelChargeAgent */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = BezelChargeAgent; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -87,6 +91,9 @@
 		000000000000000130000000 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			files = (
+                BA0000000000000000000001,
+                BA0000000000000000000002,
+                BA0000000000000000000006,
 			);
 		};
 		BC0000000000000000000005 /* Frameworks */ = {
@@ -105,6 +112,7 @@
 		000000000000000000000001 = {
 			isa = PBXGroup;
 			children = (
+				BEEF00000000000000000001 /* Bezel.xcconfig */,
 				000000000000000000000010 /* Untitled Project */,
 				BC0000000000000000000003 /* BezelChargeAgent */,
 				BF0000000000000000000005 /* BezelFinder */,
@@ -128,7 +136,7 @@
 				BC0000000000000000000001 /* main.m */,
 			);
 			name = BezelChargeAgent;
-			path = MyApp/Utilities/Tether/ChargeAgent;
+			path = "Untitled Project/Utilities/Tether/ChargeAgent";
 			sourceTree = "<group>";
 		};
 		BF0000000000000000000005 /* BezelFinder */ = {
@@ -164,6 +172,7 @@
 				000000000000000000000010 /* Untitled Project */,
 			);
 			name = "Untitled Project";
+			packageProductDependencies = (BA0000000000000000000003, BA0000000000000000000004, BA0000000000000000000007);
 			productName = MyApp;
 			productReference = 000000000000000000000120 /* Bezel.app */;
 			productType = "com.apple.product-type.application";
@@ -199,9 +208,19 @@
 		};
 /* End PBXNativeTarget section */
 
+/* Begin XCRemoteSwiftPackageReference section */
+        BA0000000000000000000008 = {isa = XCRemoteSwiftPackageReference; repositoryURL = "https://github.com/openid/AppAuth-iOS.git"; requirement = {kind = exactVersion; version = 2.1.0; }; };
+        BA0000000000000000000005 = {isa = XCRemoteSwiftPackageReference; repositoryURL = "https://github.com/google/GoogleSignIn-iOS"; requirement = {kind = exactVersion; version = 9.0.0; }; };
+/* End XCRemoteSwiftPackageReference section */
+/* Begin XCSwiftPackageProductDependency section */
+        BA0000000000000000000007 = {isa = XCSwiftPackageProductDependency; package = BA0000000000000000000008; productName = AppAuth; };
+        BA0000000000000000000003 = {isa = XCSwiftPackageProductDependency; package = BA0000000000000000000005; productName = GoogleSignIn; };
+        BA0000000000000000000004 = {isa = XCSwiftPackageProductDependency; package = BA0000000000000000000005; productName = GoogleSignInSwift; };
+/* End XCSwiftPackageProductDependency section */
 /* Begin PBXProject section */
 		000000000000000000000000 /* Project object */ = {
 			isa = PBXProject;
+            packageReferences = (BA0000000000000000000005, BA0000000000000000000008);
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
 				LastSwiftUpdateCheck = 2630;
@@ -282,6 +301,7 @@
 /* Begin XCBuildConfiguration section */
 		000000000000000011000000 /* Debug configuration for PBXProject "Untitled Project" */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = BEEF00000000000000000001 /* Bezel.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
@@ -352,6 +372,7 @@
 		};
 		000000000000000012000000 /* Release configuration for PBXProject "Untitled Project" */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = BEEF00000000000000000001 /* Bezel.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
@@ -417,20 +438,21 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = "Untitled Project/Bezel.entitlements";
-				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = MyApp/Info.plist;
+				INFOPLIST_FILE = "Untitled Project/Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = Bezel;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
-				INFOPLIST_KEY_NSAppleEventsUsageDescription = "Bezel reads track details and controls playback in music players you explicitly connect.";
+				INFOPLIST_KEY_NSAppleEventsUsageDescription = "Bezel controls music players you connect and, if enabled, asks Finder to position converted files beside their originals.";
 				INFOPLIST_KEY_NSAudioCaptureUsageDescription = "Bezel captures audio from apps you select to adjust their volume and route playback to your chosen speakers.";
-				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2026 Bezel.";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2026 Bezel authors.";
 				INFOPLIST_KEY_NSScreenCaptureUsageDescription = "Bezel captures only when you invoke Lens, to recognize text locally from a region you select.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
@@ -461,7 +483,7 @@
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = nonisolated;
 				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_OBJC_BRIDGING_HEADER = "MyApp/Core/Bezel-Bridging-Header.h";
+				SWIFT_OBJC_BRIDGING_HEADER = "Untitled Project/Core/Bezel-Bridging-Header.h";
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = "1,2,7";
@@ -473,20 +495,21 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = "Untitled Project/Bezel.entitlements";
-				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = MyApp/Info.plist;
+				INFOPLIST_FILE = "Untitled Project/Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = Bezel;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
-				INFOPLIST_KEY_NSAppleEventsUsageDescription = "Bezel reads track details and controls playback in music players you explicitly connect.";
+				INFOPLIST_KEY_NSAppleEventsUsageDescription = "Bezel controls music players you connect and, if enabled, asks Finder to position converted files beside their originals.";
 				INFOPLIST_KEY_NSAudioCaptureUsageDescription = "Bezel captures audio from apps you select to adjust their volume and route playback to your chosen speakers.";
-				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2026 Bezel.";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2026 Bezel authors.";
 				INFOPLIST_KEY_NSScreenCaptureUsageDescription = "Bezel captures only when you invoke Lens, to recognize text locally from a region you select.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
@@ -517,7 +540,7 @@
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = nonisolated;
 				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_OBJC_BRIDGING_HEADER = "MyApp/Core/Bezel-Bridging-Header.h";
+				SWIFT_OBJC_BRIDGING_HEADER = "Untitled Project/Core/Bezel-Bridging-Header.h";
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = "1,2,7";
@@ -527,8 +550,9 @@
 		BC0000000000000000000007 /* Debug configuration for PBXNativeTarget "BezelChargeAgent" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
+
 				ENABLE_HARDENED_RUNTIME = YES;
 				MACOSX_DEPLOYMENT_TARGET = 15.0;
 				OTHER_LDFLAGS = (
@@ -546,8 +570,9 @@
 		BC0000000000000000000008 /* Release configuration for PBXNativeTarget "BezelChargeAgent" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
+
 				ENABLE_HARDENED_RUNTIME = YES;
 				MACOSX_DEPLOYMENT_TARGET = 15.0;
 				OTHER_LDFLAGS = (
@@ -567,8 +592,9 @@
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = BezelFinder/BezelFinder.entitlements;
-				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
+
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -595,8 +621,9 @@
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = BezelFinder/BezelFinder.entitlements;
-				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
+
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = NO;

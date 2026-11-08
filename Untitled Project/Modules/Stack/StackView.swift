@@ -1,130 +1,161 @@
 import AppKit
+import ApplicationServices
 import SwiftUI
 
 struct StackView: View {
     @Bindable var service: StackService
-    @State private var selectedEntry: ClipboardEntry?
+    @State private var previewEntry: ClipboardEntry?
+    @State private var selectedIDs: Set<UUID> = []
+    @State private var isSelecting = false
     @State private var confirmClear = false
+    @FocusState private var historyFocused: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
+        VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 5) {
                     Text("Everything you copied.").font(.title2.weight(.semibold))
-                    Text("Collect a sequence, then paste it in order.").foregroundStyle(.secondary)
+                    Text("Save a few Quick Clips. Choose exactly what to paste.").font(.callout).foregroundStyle(.secondary)
                 }
                 Spacer()
-                Toggle("Clipboard history", isOn: $service.isEnabled).toggleStyle(.switch)
+                Toggle("History", isOn: $service.isEnabled).toggleStyle(.switch)
             }
-            HStack(spacing: 14) {
-                Label("\(service.history.count) of 50 items", systemImage: "square.stack.3d.up")
-                Label(ByteCountFormatter.string(fromByteCount: Int64(service.memoryBytes), countStyle: .memory), systemImage: "memorychip")
+            HStack(spacing: 12) {
+                Label("\(service.history.count) items", systemImage: "square.stack.3d.up").font(.caption).foregroundStyle(.secondary)
                 Spacer()
-                Button("Open at Pointer", systemImage: "cursorarrow.rays") { service.showHUD() }
-            }
-            .font(.caption).foregroundStyle(.secondary)
-            sequenceStrip
-            HStack {
+                if isSelecting {
+                    Button("Select All") { selectedIDs = Set(service.filteredHistory.map(\.id)) }
+                    Button("Delete Selected (\(selectedIDs.count))", systemImage: "trash", role: .destructive) { deleteSelection() }.disabled(selectedIDs.isEmpty)
+                }
+                Button(isSelecting ? "Done" : "Select") {
+                    isSelecting.toggle(); selectedIDs.removeAll(); historyFocused = isSelecting
+                }.disabled(!isSelecting && service.history.isEmpty)
+                Button("Open Clipboard", systemImage: "cursorarrow.rays") { service.showHUD() }
+            }.controlSize(.small)
+            quickClips
+            HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                TextField("Search text, files, or source app", text: $service.searchText).textFieldStyle(.plain)
-                if !service.searchText.isEmpty { Button { service.searchText = "" } label: { Image(systemName: "xmark.circle.fill") }.buttonStyle(.plain) }
-            }
-            .padding(10).background(.quaternary, in: RoundedRectangle(cornerRadius: 9))
-            if service.filteredHistory.isEmpty {
-                ContentUnavailableView(service.searchText.isEmpty ? "Your next copy starts here" : "No matching items", systemImage: "doc.on.clipboard", description: Text(service.searchText.isEmpty ? "Text, images, and files stay in memory for this session. Apps’ concealed and temporary clipboard items are skipped." : "Try a different word or app name."))
-                    .frame(maxWidth: .infinity, minHeight: 180)
-            } else {
-                ScrollView {
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 200), spacing: 12)], spacing: 12) {
-                        ForEach(service.filteredHistory) { entry in
-                            ClipboardCard(entry: entry, queuePosition: service.queue.firstIndex(where: { $0.id == entry.id }).map { $0 + 1 }) {
-                                selectedEntry = entry
-                            }
-                            .contextMenu {
-                                Button("Copy", systemImage: "doc.on.doc") { service.copy(entry) }
-                                Button("Add to Sequence", systemImage: "text.badge.plus") { service.enqueue(entry) }
-                                Divider()
-                                Button("Remove", systemImage: "trash", role: .destructive) { service.remove(entry) }
-                            }
-                        }
-                    }
-                    .padding(2)
+                TextField("Search text, images, files, or app", text: $service.searchText).textFieldStyle(.plain)
+                if !service.searchText.isEmpty {
+                    Button { service.searchText = "" } label: { Image(systemName: "xmark.circle.fill") }
+                        .buttonStyle(.plain).foregroundStyle(.secondary).help("Clear search")
                 }
-                .frame(minHeight: 200)
-            }
-            HStack {
-                Text(service.statusMessage ?? "History stays on this Mac and is cleared when Bezel quits.")
-                    .font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
+            }.padding(.horizontal, 15).padding(.vertical, 12).bezelGlass(cornerRadius: 100)
+            historyArea.frame(minHeight: 120, maxHeight: .infinity)
+                .focusable(isSelecting).focused($historyFocused)
+                .onDeleteCommand { if isSelecting { deleteSelection() } }
+                .onExitCommand { isSelecting = false; selectedIDs.removeAll() }
+            HStack(spacing: 12) {
+                Text(service.statusMessage ?? (isSelecting ? "Click clips to select them, then delete them together." : "Clips stay in memory until Bezel quits."))
+                    .font(.caption).foregroundStyle(.secondary).lineLimit(2)
                 Spacer()
-                Button("Clear History", role: .destructive) { confirmClear = true }.disabled(service.history.isEmpty && service.queue.isEmpty)
+                Button("Delete All", systemImage: "trash", role: .destructive) { confirmClear = true }
+                    .disabled(service.history.isEmpty && service.queue.isEmpty).controlSize(.small)
             }
-        }
-        .padding(24)
-        .sheet(item: $selectedEntry) { entry in ClipboardPreview(entry: entry, service: service) }
-        .confirmationDialog("Clear clipboard history and the paste sequence?", isPresented: $confirmClear) {
-            Button("Clear History", role: .destructive) { service.clearHistory() }
-        } message: { Text("This removes Bezel’s in-memory copies. Your current system clipboard is kept.") }
+        }.padding(24)
+        .sheet(item: $previewEntry) { entry in ClipboardPreview(entry: entry, service: service) }
+        .confirmationDialog("Delete all history and Quick Clips?", isPresented: $confirmClear) {
+            Button("Delete All", role: .destructive) { service.clearHistory(); selectedIDs.removeAll(); isSelecting = false }
+        } message: { Text("Bezel’s saved clips are removed. Your current system clipboard is kept.") }
+        .onChange(of: service.history.map(\.id)) { _, ids in selectedIDs.formIntersection(Set(ids)) }
+        .onChange(of: service.searchText) { selectedIDs.removeAll() }
     }
 
-    private var sequenceStrip: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Label("Paste sequence", systemImage: "list.number").font(.headline)
-                Text("\(service.queue.count)").font(.caption.monospacedDigit()).padding(.horizontal, 6).padding(.vertical, 2).background(.quaternary, in: Capsule())
-                Spacer()
-                if !service.queue.isEmpty {
-                    Button("Clear") { service.clearQueue() }.buttonStyle(.borderless)
-                    Button("Paste Next") { service.pasteNext() }.disabled(service.isPasting)
-                }
-            }
-            if let next = service.queue.first {
-                Label(next.title, systemImage: next.kind.symbol).lineLimit(1).font(.callout)
-            } else {
-                Text("⇧⌘C collects a selection · ⇧⌘V pastes the oldest item").font(.callout).foregroundStyle(.secondary)
+    @ViewBuilder private var historyArea: some View {
+        if service.filteredHistory.isEmpty {
+            VStack(spacing: 12) {
+                Image(systemName: "doc.on.clipboard").font(.system(size: 38, weight: .light)).foregroundStyle(.tint)
+                Text(service.searchText.isEmpty ? "Your next copy starts here" : "No matching clips").font(.headline)
+                Text(service.searchText.isEmpty ? "Text, images, and files stay here for this session." : "Try a different word or app name.")
+                    .font(.callout).foregroundStyle(.secondary)
+            }.frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            ScrollView {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 200), spacing: 12)], spacing: 12) {
+                    ForEach(service.filteredHistory) { entry in
+                        ClipboardCard(entry: entry, queuePosition: service.queue.firstIndex(where: { $0.id == entry.id }).map { $0 + 1 },
+                                      isSelected: selectedIDs.contains(entry.id), showsSelection: isSelecting,
+                                      removeAction: { service.remove(entry) }) {
+                            if isSelecting {
+                                if selectedIDs.contains(entry.id) { selectedIDs.remove(entry.id) }
+                                else { selectedIDs.insert(entry.id) }
+                            } else { previewEntry = entry }
+                        }.contextMenu {
+                            Button("Copy", systemImage: "doc.on.doc") { service.copy(entry) }
+                            Button("Add to Quick Clips", systemImage: "text.badge.plus") { service.enqueue(entry) }
+                            Button("Delete", systemImage: "trash", role: .destructive) { service.remove(entry) }
+                        }
+                    }
+                }.padding(4)
             }
         }
-        .padding(14)
-        .background(Color.accentColor.opacity(0.07), in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    private func deleteSelection() { service.remove(selectedIDs); selectedIDs.removeAll() }
+
+    private var quickClips: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "square.stack.3d.up.fill").font(.title3).foregroundStyle(.tint)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Quick Clips · \(service.queue.count)").font(.headline)
+                Text("⇧⌘C adds a selection · ⇧⌘V lets you choose a clip").font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 8)
+            if !service.queue.isEmpty { Button("Clear") { service.clearQueue() }.buttonStyle(.borderless) }
+            Button("Choose to Paste", systemImage: "list.bullet.rectangle") { service.showPastePicker() }
+        }.padding(18).bezelSurface(cornerRadius: 22, tint: .accentColor)
     }
 }
 
 private struct ClipboardCard: View {
     let entry: ClipboardEntry
     let queuePosition: Int?
+    var isSelected = false
+    var showsSelection = false
+    var removeAction: (() -> Void)? = nil
     let action: () -> Void
+    @State private var hovering = false
 
     var body: some View {
-        Button(action: action) {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack {
-                    Image(systemName: entry.kind.symbol).foregroundStyle(.tint)
-                    Text(entry.kind.rawValue).font(.caption.weight(.medium)).foregroundStyle(.secondary)
-                    Spacer()
-                    if let queuePosition { Text("\(queuePosition)").font(.caption2.monospacedDigit()).padding(5).background(Color.accentColor.opacity(0.12), in: Circle()) }
-                }
-                if let data = entry.thumbnailData, let image = NSImage(data: data) {
-                    Image(nsImage: image).resizable().scaledToFit().frame(maxWidth: .infinity).frame(height: 68)
-                } else {
-                    Text(entry.preview).font(entry.kind == .binary ? .system(.caption, design: .monospaced) : .callout)
-                        .lineLimit(4).frame(maxWidth: .infinity, minHeight: 68, maxHeight: 68, alignment: .topLeading)
-                }
-                Divider()
-                HStack(spacing: 5) {
-                    if let icon = ClipboardAppIcons.icon(for: entry.sourceBundleIdentifier) {
-                        Image(nsImage: icon).resizable().frame(width: 13, height: 13).accessibilityHidden(true)
+        ZStack(alignment: .topTrailing) {
+            Button(action: action) {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 7) {
+                        if showsSelection {
+                            Image(systemName: isSelected ? "checkmark.circle.fill" : "circle").foregroundStyle(isSelected ? Color.accentColor : .secondary)
+                        } else { Image(systemName: entry.kind.symbol).foregroundStyle(.tint) }
+                        Text(entry.kind.rawValue).font(.caption.weight(.medium)).foregroundStyle(.secondary)
+                        Spacer()
+                        if let queuePosition { Text("\(queuePosition)").font(.caption2.monospacedDigit()).foregroundStyle(.tint) }
+                        if removeAction != nil { Color.clear.frame(width: 18, height: 16) }
                     }
-                    Text(entry.sourceName).lineLimit(1)
-                    Spacer()
-                    Text(entry.capturedAt, style: .time)
-                }
-                .font(.caption2).foregroundStyle(.secondary)
+                    if let data = entry.thumbnailData, let image = NSImage(data: data) {
+                        Image(nsImage: image).resizable().scaledToFit().frame(maxWidth: .infinity).frame(height: 72)
+                    } else {
+                        Text(entry.preview).font(entry.kind == .binary ? .system(.caption, design: .monospaced) : .callout)
+                            .lineLimit(4).frame(maxWidth: .infinity, minHeight: 72, maxHeight: 72, alignment: .topLeading)
+                    }
+                    Divider()
+                    HStack(spacing: 5) {
+                        if let icon = ClipboardAppIcons.icon(for: entry.sourceBundleIdentifier) {
+                            Image(nsImage: icon).resizable().frame(width: 14, height: 14).accessibilityHidden(true)
+                        }
+                        Text(entry.sourceName).lineLimit(1)
+                        Spacer(minLength: 0)
+                        Text(entry.capturedAt, style: .time)
+                    }.font(.caption2).foregroundStyle(.secondary)
+                }.padding(13).frame(maxWidth: .infinity, alignment: .leading)
+                .bezelSurface(cornerRadius: 18, tint: isSelected ? .accentColor : .clear)
+                .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(isSelected ? Color.accentColor : Color.primary.opacity(hovering ? 0.14 : 0.07), lineWidth: isSelected ? 2 : 1))
+            }.buttonStyle(.plain)
+                .accessibilityLabel("\(entry.kind.rawValue), \(entry.title), copied from \(entry.sourceName)")
+                .accessibilityAddTraits(isSelected ? .isSelected : [])
+            if let removeAction {
+                Button(role: .destructive, action: removeAction) { Image(systemName: "trash").font(.caption) }
+                    .buttonStyle(.plain).foregroundStyle(.secondary).padding(13).opacity(hovering || showsSelection ? 1 : 0.35)
+                    .help("Delete this clip").accessibilityLabel("Delete \(entry.title)")
             }
-            .padding(12).background(.background, in: RoundedRectangle(cornerRadius: 12))
-            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.quaternary, lineWidth: 1))
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("\(entry.kind.rawValue), \(entry.title), copied from \(entry.sourceName)")
-        .help(entry.detail)
+        }.onHover { hovering = $0 }.help(entry.detail)
     }
 }
 
@@ -151,8 +182,8 @@ private struct ClipboardPreview: View {
             HStack {
                 Text(entry.capturedAt, format: .dateTime.month().day().hour().minute()).font(.caption).foregroundStyle(.secondary)
                 Spacer()
-                Button("Add to Sequence", systemImage: "text.badge.plus") { service.enqueue(entry); dismiss() }
-                Button("Copy", systemImage: "doc.on.doc") { service.copy(entry); dismiss() }.buttonStyle(.borderedProminent)
+                Button("Add to Quick Clips", systemImage: "text.badge.plus") { service.enqueue(entry); dismiss() }
+                Button("Copy", systemImage: "doc.on.doc") { service.copy(entry); dismiss() }.buttonStyle(BezelActionStyle(prominent: true))
             }
         }
         .padding(22).frame(width: 540)
@@ -162,36 +193,79 @@ private struct ClipboardPreview: View {
 struct StackHUD: View {
     @Bindable var service: StackService
     @FocusState private var searchFocused: Bool
+    private var selected: ClipboardEntry? { service.hudEntries.first { $0.id == service.hudSelectionID } }
 
     var body: some View {
         VStack(spacing: 12) {
-            HStack(spacing: 8) {
+            HStack(spacing: 9) {
                 Image(systemName: "square.stack.3d.up.fill").foregroundStyle(.tint)
-                Text("Stack").font(.headline)
-                Text("\(service.history.count)").font(.caption).foregroundStyle(.secondary)
+                Text(service.hudIsPasteMode ? "Choose a clip to paste" : "Stack").font(.headline)
                 Spacer()
-                if !service.queue.isEmpty { Button("Paste next · \(service.queue.count)") { service.pasteNext() } }
-                Button { service.hideHUD() } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }.buttonStyle(.plain).accessibilityLabel("Close Stack")
+                Button { service.hideHUD() } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
+                    .buttonStyle(.plain).accessibilityLabel("Close Stack")
             }
-            TextField("Search clipboard", text: $service.searchText).textFieldStyle(.roundedBorder).focused($searchFocused)
-            if service.filteredHistory.isEmpty {
-                ContentUnavailableView("Nothing here yet", systemImage: "doc.on.clipboard", description: Text("Copy text, an image, or a file to begin."))
+            HStack {
+                Picker("Collection", selection: $service.hudCollection) {
+                    ForEach(ClipboardCollection.allCases) { collection in Text(collection.rawValue).tag(collection) }
+                }.pickerStyle(.segmented).frame(maxWidth: 280)
+                Spacer()
+                Text("\(service.hudEntries.count) clips").font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                Button("Add Clipboard", systemImage: "plus") { service.addCurrentClipboardToQueue() }.controlSize(.small)
+            }
+            TextField("Search clips", text: $service.searchText).textFieldStyle(.plain).focused($searchFocused)
+                .padding(.horizontal, 15).padding(.vertical, 11).bezelSurface(cornerRadius: 100)
+            if service.hudEntries.isEmpty {
+                VStack(spacing: 10) {
+                    Image(systemName: "doc.on.clipboard").font(.system(size: 32, weight: .light)).foregroundStyle(.secondary)
+                    Text(service.hudCollection == .quickClips ? "No Quick Clips yet" : "No matching clips").font(.headline)
+                    Text("⇧⌘C copies a selection here. Add Clipboard saves what you’ve already copied.")
+                        .font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                }.frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                ScrollView {
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 180))], spacing: 10) {
-                        ForEach(service.filteredHistory) { entry in
-                            ClipboardCard(entry: entry, queuePosition: nil) { service.copy(entry); service.hideHUD() }
-                                .contextMenu { Button("Add to Sequence") { service.enqueue(entry) } }
-                        }
-                    }
-                    .padding(2)
+                ScrollViewReader { reader in
+                    ScrollView {
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 180))], spacing: 10) {
+                            ForEach(Array(service.hudEntries.enumerated()), id: \.offset) { index, entry in
+                                ClipboardCard(entry: entry, queuePosition: service.hudCollection == .quickClips ? index + 1 : nil,
+                                              isSelected: service.hudSelectionID == entry.id) {
+                                    service.hudSelectionID = entry.id
+                                    if service.hudIsPasteMode {
+                                        service.paste(entry, fromQuickClips: service.hudCollection == .quickClips)
+                                    } else {
+                                        service.copy(entry)
+                                    }
+                                }.id(entry.id)
+                            }
+                        }.padding(3)
+                    }.onChange(of: service.hudSelectionID) { _, id in if let id { reader.scrollTo(id, anchor: .center) } }
                 }
             }
-            HStack { Text("Click to copy · Right-click to queue"); Spacer(); Text("Esc to close") }.font(.caption2).foregroundStyle(.secondary)
-        }
-        .padding(16).background(.regularMaterial)
-        .onAppear { searchFocused = true }
+            if let message = service.statusMessage {
+                Text(message).font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading).lineLimit(2)
+            }
+            HStack(spacing: 10) {
+                if !AccessibilityAccess.canSendKeyboardEvents { Button("Accessibility…") { service.openAccessibilitySettings() }.controlSize(.small) }
+                Text(service.hudIsPasteMode ? "Click a clip to paste · Esc closes" : "Esc closes").font(.caption2).foregroundStyle(.secondary)
+                Spacer()
+                if service.hudCollection == .history {
+                    Button("Add to Quick Clips") { if let selected { service.enqueue(selected) } }.disabled(selected == nil)
+                }
+                Button("Copy") { if let selected { service.copy(selected); service.hideHUD() } }.disabled(selected == nil)
+                Button("Paste", systemImage: "doc.on.clipboard") {
+                    if let selected { service.paste(selected, fromQuickClips: service.hudCollection == .quickClips) }
+                }.buttonStyle(BezelActionStyle(prominent: true)).keyboardShortcut(.defaultAction).disabled(selected == nil || service.isPasting)
+            }.controlSize(.small)
+        }.padding(20).frame(maxWidth: .infinity, maxHeight: .infinity)
+        .bezelGlass(cornerRadius: 28).padding(2)
+        .buttonStyle(BezelActionStyle())
+        .onAppear { searchFocused = true; chooseFirstIfNeeded() }
+        .onChange(of: service.hudCollection) { chooseFirstIfNeeded() }
+        .onChange(of: service.hudEntries.map(\.id)) { chooseFirstIfNeeded() }
         .onExitCommand { service.hideHUD() }
+    }
+
+    private func chooseFirstIfNeeded() {
+        if !service.hudEntries.contains(where: { $0.id == service.hudSelectionID }) { service.hudSelectionID = service.hudEntries.first?.id }
     }
 }
 
