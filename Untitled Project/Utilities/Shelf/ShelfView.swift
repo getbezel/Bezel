@@ -87,7 +87,7 @@ struct ShelfDrawer: View {
                     Label("Shelf", systemImage: "tray.fill").font(.headline)
                         .help("Drag to move Shelf")
                     Text("\(service.count)").font(.caption.monospacedDigit()).foregroundStyle(.secondary)
-                    Spacer(minLength: 0)
+                    Spacer(minLength: 0).frame(minHeight: 24)
                     ShelfSizeMenu(service: service).labelStyle(.iconOnly).shelfMouseRegion()
                     Button { service.hide() } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
                         .buttonStyle(.plain).accessibilityLabel("Hide Shelf").shelfMouseRegion()
@@ -100,7 +100,11 @@ struct ShelfDrawer: View {
                     Spacer(minLength: 0)
                 }.controlSize(.small)
                 if service.items.isEmpty {
-                    ShelfEmptyState().frame(maxWidth: .infinity, maxHeight: .infinity)
+                    ViewThatFits(in: .vertical) {
+                        ShelfEmptyState()
+                        ShelfEmptyState(compact: true)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     ScrollView {
                         LazyVStack(spacing: 6) {
@@ -116,14 +120,16 @@ struct ShelfDrawer: View {
                         Button("Clear") { service.clear() }.buttonStyle(.borderless).controlSize(.small).shelfMouseRegion()
                     }
                     Image(systemName: "arrow.up.left.and.arrow.down.right")
-                        .font(.caption.weight(.medium)).foregroundStyle(.secondary)
-                        .frame(width: 32, height: 32)
-                        .background(.primary.opacity(0.07), in: RoundedRectangle(cornerRadius: 9))
-                        .shelfMouseRegion(.resize)
+                        .font(.caption).foregroundStyle(.tertiary)
+                        .frame(width: 22, height: 22)
+                        .overlay {
+                            ShelfMouseRegion(interaction: .resize).frame(width: 32, height: 32)
+                        }
                         .help("Drag to resize Shelf")
                         .accessibilityLabel("Resize Shelf; size controls are in the menu")
                 }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .padding(16)
             .bezelGlass(cornerRadius: 28)
             .overlay(RoundedRectangle(cornerRadius: 28).strokeBorder(service.isDropTargeted ? Color.accentColor : Color.primary.opacity(0.12), lineWidth: service.isDropTargeted ? 2 : 1))
@@ -146,13 +152,17 @@ private struct ShelfSizeMenu: View {
 }
 
 private struct ShelfEmptyState: View {
+    var compact = false
+
     var body: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "tray.and.arrow.down").font(.system(size: 36, weight: .light)).foregroundStyle(.tint)
+        VStack(spacing: compact ? 8 : 12) {
+            Image(systemName: "tray.and.arrow.down").font(.system(size: compact ? 28 : 36, weight: .light)).foregroundStyle(.tint)
             Text("Drop something here").font(.headline)
-            Text("Files, images, and text.\nReady whenever you are.")
-                .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
-        }.padding(20)
+            if !compact {
+                Text("Files, images, and text.\nReady whenever you are.")
+                    .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
+            }
+        }.padding(compact ? 8 : 20)
     }
 }
 
