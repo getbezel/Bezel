@@ -58,7 +58,6 @@ final class ShelfService: NSObject, NSWindowDelegate {
     @ObservationIgnored private var imageTasks: [UUID: Task<Void, Never>] = [:]
     @ObservationIgnored private var ownedImages: Set<URL> = []
     @ObservationIgnored private var settingFrame = false
-    @ObservationIgnored private var resizeStart: NSRect?
     @ObservationIgnored private var panel: ShelfPanel?
     @ObservationIgnored private var previewWindow: NSWindow?
     @ObservationIgnored private var dragMonitor: Any?
@@ -233,19 +232,6 @@ final class ShelfService: NSObject, NSWindowDelegate {
         if isVisible { hide(); show() }
     }
 
-    func resizeDrawer(by translation: CGSize, finished: Bool) {
-        guard let panel, let screen = panel.screen else { return }
-        let start = resizeStart ?? panel.frame
-        resizeStart = start
-        let size = CGSize(width: min(max(start.width + translation.width, 280), 640),
-                          height: min(max(start.height + translation.height, 240), 720))
-        let frame = ShelfPlacement.constrained(CGRect(x: start.minX, y: start.maxY - size.height, width: size.width, height: size.height), to: screen.visibleFrame.insetBy(dx: 8, dy: 8))
-        settingFrame = true
-        panel.setFrame(frame, display: true)
-        settingFrame = false
-        if finished { resizeStart = nil; rememberFrame() }
-    }
-
     func windowDidMove(_ notification: Notification) {
         if let window = notification.object as? NSWindow, window === panel { rememberFrame() }
     }
@@ -257,10 +243,10 @@ final class ShelfService: NSObject, NSWindowDelegate {
     }
 
     private func rememberFrame() {
-        guard !settingFrame, isVisible, let panel else { return }
+        guard !settingFrame, isVisible, let panel, !panel.isResizingFromGrip else { return }
         settingFrame = true
-        drawerWidth = panel.frame.width
-        drawerHeight = panel.frame.height
+        if drawerWidth != panel.frame.width { drawerWidth = panel.frame.width }
+        if drawerHeight != panel.frame.height { drawerHeight = panel.frame.height }
         settingFrame = false
         UserDefaults.standard.set(NSStringFromRect(panel.frame), forKey: "shelf.frame")
     }
@@ -389,10 +375,13 @@ final class ShelfService: NSObject, NSWindowDelegate {
             panel.isOpaque = false
             panel.backgroundColor = .clear
             panel.hasShadow = true
+            panel.ignoresMouseEvents = false
+            panel.acceptsMouseMovedEvents = true
             panel.isMovableByWindowBackground = false
             panel.minSize = NSSize(width: 280, height: 240)
             panel.maxSize = NSSize(width: 640, height: 720)
             panel.delegate = self
+            panel.onResizeFinished = { [weak self] in self?.rememberFrame() }
             let hosting = NSHostingView(rootView: ShelfDrawer(service: self))
             hosting.sizingOptions = []
             panel.contentView = hosting
@@ -423,10 +412,4 @@ final class ShelfService: NSObject, NSWindowDelegate {
             Task { @MainActor in self?.settingFrame = false; self?.rememberFrame() }
         }
     }
-}
-
-@MainActor
-private final class ShelfPanel: NSPanel {
-    override var canBecomeKey: Bool { true }
-    override var canBecomeMain: Bool { false }
 }

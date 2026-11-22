@@ -99,6 +99,69 @@ import Synchronization
         replyBox.withLock { $0 }?(.success(10))
     }
 
+    @MainActor static func shelfWindowChecks() {
+        _ = NSApplication.shared
+        guard let screen = NSScreen.main else { fatalError("Shelf input checks need a display") }
+        let visible = screen.visibleFrame.insetBy(dx: 8, dy: 8)
+        let initial = CGRect(x: visible.minX + 40, y: visible.maxY - 460, width: 380, height: 400)
+        let panel = ShelfPanel(contentRect: initial, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+        panel.isReleasedWhenClosed = false
+        defer { panel.close() }
+        let content = NSView(frame: CGRect(origin: .zero, size: initial.size))
+        panel.contentView = content
+        let item = ShelfMouseRegionView(interaction: .content)
+        item.frame = CGRect(x: 20, y: 160, width: 340, height: 70)
+        content.addSubview(item)
+        let grip = ShelfMouseRegionView(interaction: .resize)
+        grip.frame = CGRect(x: 330, y: 10, width: 32, height: 32)
+        grip.autoresizingMask = [.minXMargin, .maxYMargin]
+        content.addSubview(grip)
+        let button = NSButton(frame: CGRect(x: 20, y: 320, width: 80, height: 28))
+        content.addSubview(button)
+        for point in [CGPoint(x: 10, y: 200), CGPoint(x: 180, y: 90), CGPoint(x: 180, y: 380), CGPoint(x: 100, y: 20)] {
+            require(panel.interaction(at: point) == .move, "Shelf background must move at \(point); bounds=\(content.bounds), interaction=\(panel.interaction(at: point))")
+        }
+        require(panel.interaction(at: CGPoint(x: 180, y: 190)) == .content, "Stored assets must keep outbound drags")
+        require(panel.interaction(at: CGPoint(x: 50, y: 334)) == .content, "Native buttons must keep their click")
+        require(panel.interaction(at: CGPoint(x: 346, y: 26)) == .resize, "The full grip must capture resize input")
+        require(grip.hitTest(CGPoint(x: 346, y: 26)) == nil, "Region markers must never swallow SwiftUI controls or file drags")
+        item.isHidden = true
+        require(panel.interaction(at: CGPoint(x: 180, y: 190)) == .move, "Hidden rows must not leave blocked background areas")
+        item.removeFromSuperview()
+        require(panel.interaction(at: CGPoint(x: 180, y: 190)) == .move, "Removed rows must release their input regions")
+
+        var completions = 0
+        panel.onResizeFinished = { completions += 1 }
+        let start = panel.convertPoint(toScreen: CGPoint(x: 346, y: 26))
+        func send(_ type: NSEvent.EventType, screenPoint: CGPoint) {
+            let event = NSEvent.mouseEvent(with: type, location: panel.convertPoint(fromScreen: screenPoint),
+                                          modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                          windowNumber: panel.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!
+            panel.sendEvent(event)
+        }
+        require(!panel.isKeyWindow, "Fixture must start inactive")
+        send(.leftMouseDown, screenPoint: start)
+        require(panel.isResizingFromGrip, "Resize must capture the very first click in an inactive panel")
+        let end = CGPoint(x: start.x + 48, y: start.y - 34)
+        send(.leftMouseDragged, screenPoint: end)
+        require(panel.frame == CGRect(x: initial.minX, y: initial.minY - 34, width: 428, height: 434), "Resize must follow the screen pointer with a fixed top-left corner")
+        send(.leftMouseDragged, screenPoint: end)
+        require(panel.frame.height == 434, "Moving the window origin must not accumulate a second resize delta")
+        send(.leftMouseUp, screenPoint: end)
+        require(!panel.isResizingFromGrip && completions == 1 && !panel.isKeyWindow, "Release must finish once without stealing focus")
+        let next = grip.convert(CGPoint(x: 16, y: 16), to: nil)
+        send(.leftMouseDown, screenPoint: panel.convertPoint(toScreen: next))
+        panel.orderOut(nil)
+        require(!panel.isResizingFromGrip && completions == 2, "Hiding a panel mid-drag must release the resize session")
+
+        let monitor = CGRect(x: -1440, y: -200, width: 1440, height: 860)
+        let session = ShelfResizeSession(frame: CGRect(x: -500, y: 0, width: 380, height: 400), pointer: .zero, visibleFrame: monitor)
+        let expanded = session.frame(at: CGPoint(x: 2000, y: -2000))
+        require(monitor.contains(expanded) && expanded.minX == -500 && expanded.maxY == 400, "Large resizes must stop at the display boundary without moving the anchor")
+        let shrunk = session.frame(at: CGPoint(x: -2000, y: 2000))
+        require(shrunk.size == CGSize(width: 280, height: 240), "Resizing must preserve the usable minimum size")
+    }
+
     @MainActor static func main() async throws {
         let stale = AccessibilityAccess.Snapshot(reportedTrusted: false, verifiedWindowAccess: true, probeError: .success, keyboardEvents: false)
         require(stale.windowAccess && !stale.keyboardEvents, "A successful real window read must overcome a stale trust flag without authorizing keyboard events")
@@ -133,6 +196,7 @@ import Synchronization
         require(near < middle && middle < far && far < alpha(1030, 400), "Rendered feather must brighten continuously toward the active window without dark seams")
         try await commandChecks()
         try await callbackChecks()
+        shelfWindowChecks()
         var focus = FocusChangeTracker()
         require(focus.observe(nil) == nil, "Unknown Focus must not announce off")
         require(focus.observe(false) == nil, "Initial status must establish a baseline")
@@ -184,6 +248,6 @@ import Synchronization
         require(display.contains(placed), "A remembered drawer must stay on a secondary display with a negative origin")
         let oversized = ShelfPlacement.constrained(CGRect(x: -5000, y: 4000, width: 2000, height: 1000), to: display)
         require(display.contains(oversized), "Drawer dimensions must fit a disconnected or smaller display")
-        print("Interface checks passed: Focus transitions and privacy baselines, full-resolution Shelf captures, owned-file cleanup, image storage limits, cancellation, multi-display placement, clipboard modifier/focus/permission/cancellation handling, capture callback timeouts/late replies, and rendered Monolith feathering, clear active windows, and display coordinates.")
+        print("Interface checks passed: Shelf background/control routing, inactive-panel resizing and release, display boundaries, Focus privacy baselines, Shelf image storage and cleanup, clipboard command handling, capture callback deadlines, and Monolith rendering.")
     }
 }

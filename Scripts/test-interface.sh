@@ -6,6 +6,7 @@ trap 'rm -rf "$bezel_test_build"' EXIT
 xcrun swiftc -swift-version 6 -target "$(uname -m)-apple-macos15.0" -O \
   "$bezel_root/Untitled Project/Modules/Aperture/FocusStatusMonitor.swift" \
   "$bezel_root/Untitled Project/Utilities/Shelf/ShelfImageStore.swift" \
+  "$bezel_root/Untitled Project/Utilities/Shelf/ShelfWindowInteraction.swift" \
   "$bezel_root/Untitled Project/Core/CallbackDeadline.swift" \
   "$bezel_root/Untitled Project/Core/AccessibilityAccess.swift" \
   "$bezel_root/Untitled Project/Utilities/Monolith/FocusBackdrop.swift" \

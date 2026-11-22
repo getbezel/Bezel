@@ -59,7 +59,7 @@ struct ShelfView: View {
                             Slider(value: $service.drawerHeight, in: 240...720, step: 10)
                             Text("\(Int(service.drawerHeight)) pt").monospacedDigit().frame(width: 60, alignment: .trailing)
                         }
-                        Text("Drag the Shelf header to move it, or its bottom-right corner to resize. Your layout is remembered.")
+                        Text("Drag any empty area to move Shelf, or the bottom-right grip to resize. Drag an item to take it with you. Your layout is remembered.")
                             .font(.caption).foregroundStyle(.secondary)
                     }.padding(8)
                 }
@@ -85,17 +85,18 @@ struct ShelfDrawer: View {
             VStack(spacing: 10) {
                 HStack(spacing: 8) {
                     Label("Shelf", systemImage: "tray.fill").font(.headline)
-                        .overlay { ShelfMoveHandle() }
                         .help("Drag to move Shelf")
                     Text("\(service.count)").font(.caption.monospacedDigit()).foregroundStyle(.secondary)
-                    ShelfMoveHandle().frame(maxWidth: .infinity, minHeight: 24)
-                    ShelfSizeMenu(service: service).labelStyle(.iconOnly)
+                    Spacer(minLength: 0)
+                    ShelfSizeMenu(service: service).labelStyle(.iconOnly).shelfMouseRegion()
                     Button { service.hide() } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
-                        .buttonStyle(.plain).accessibilityLabel("Hide Shelf")
+                        .buttonStyle(.plain).accessibilityLabel("Hide Shelf").shelfMouseRegion()
                 }
                 HStack(spacing: 8) {
                     Button("Clipboard", systemImage: "doc.on.clipboard") { service.pasteClipboard() }
+                        .shelfMouseRegion()
                     Button("Capture", systemImage: "camera.viewfinder") { service.captureImage?() }
+                        .shelfMouseRegion()
                     Spacer(minLength: 0)
                 }.controlSize(.small)
                 if service.items.isEmpty {
@@ -111,13 +112,14 @@ struct ShelfDrawer: View {
                     Text(service.statusMessage ?? (service.isDropTargeted ? "Release to add to Shelf" : "Drag an item to another app"))
                         .font(.caption).foregroundStyle(.secondary).lineLimit(2)
                     Spacer(minLength: 0)
-                    if !service.items.isEmpty { Button("Clear") { service.clear() }.buttonStyle(.borderless).controlSize(.small) }
+                    if !service.items.isEmpty {
+                        Button("Clear") { service.clear() }.buttonStyle(.borderless).controlSize(.small).shelfMouseRegion()
+                    }
                     Image(systemName: "arrow.up.left.and.arrow.down.right")
-                        .font(.caption).foregroundStyle(.tertiary)
-                        .frame(width: 22, height: 22).contentShape(Rectangle())
-                        .gesture(DragGesture(minimumDistance: 0, coordinateSpace: .global)
-                            .onChanged { service.resizeDrawer(by: $0.translation, finished: false) }
-                            .onEnded { service.resizeDrawer(by: $0.translation, finished: true) })
+                        .font(.caption.weight(.medium)).foregroundStyle(.secondary)
+                        .frame(width: 32, height: 32)
+                        .background(.primary.opacity(0.07), in: RoundedRectangle(cornerRadius: 9))
+                        .shelfMouseRegion(.resize)
                         .help("Drag to resize Shelf")
                         .accessibilityLabel("Resize Shelf; size controls are in the menu")
                 }
@@ -195,6 +197,7 @@ private struct ShelfItemRow: View {
             Button("Remove from Shelf", systemImage: "xmark") { service.remove(item) }
         }
         .help(item.subtitle)
+        .shelfMouseRegion()
         .task(id: item.id) {
             guard case .file(let url) = item.content else { return }
             let worker = Task.detached(priority: .utility) { () -> CGImage? in
@@ -211,17 +214,6 @@ private struct ShelfItemRow: View {
             thumbnail = NSImage(cgImage: image, size: .zero)
         }
     }
-}
-
-/// Receives a real AppKit drag on the header without stealing drags from stored assets.
-private struct ShelfMoveHandle: NSViewRepresentable {
-    func makeNSView(context: Context) -> ShelfMoveNSView { ShelfMoveNSView() }
-    func updateNSView(_ view: ShelfMoveNSView, context: Context) {}
-}
-
-private final class ShelfMoveNSView: NSView {
-    override func resetCursorRects() { addCursorRect(bounds, cursor: .openHand) }
-    override func mouseDown(with event: NSEvent) { window?.performDrag(with: event) }
 }
 
 private struct ShelfDropContainer<Content: View>: NSViewRepresentable {
