@@ -9,6 +9,9 @@ final class MonolithService {
     private(set) var isActive = false
     private(set) var remainingSeconds = 0
     var lastError: String?
+    var durationMinutes = min(240, max(5, UserDefaults.standard.object(forKey: "monolith.durationMinutes") as? Int ?? 25)) {
+        didSet { UserDefaults.standard.set(durationMinutes, forKey: "monolith.durationMinutes") }
+    }
     var dimming: Double = UserDefaults.standard.object(forKey: "monolith.dimming") as? Double ?? 0.55 {
         didSet {
             let clamped = min(0.85, max(0.20, dimming))
@@ -24,14 +27,14 @@ final class MonolithService {
     @ObservationIgnored private var displaySignature: [CGRect] = []
     @ObservationIgnored private let tracker = FocusWindowTracker()
 
-    func start(minutes: Int = 25) {
+    func start() {
         guard AccessibilityAccess.canControlWindows else {
             lastError = "macOS is blocking window access for this copy of Bezel. If Bezel is already enabled in Accessibility settings, remove the old entry and add the app shown in Bezel Settings → Privacy → Show This App in Finder."
             return
         }
         stop()
         lastError = nil
-        remainingSeconds = max(1, min(minutes, 240)) * 60
+        remainingSeconds = durationMinutes * 60
         countdown = SessionCountdown(seconds: remainingSeconds)
         isActive = true
         focusAutomation.setSessionActive(true)
@@ -134,23 +137,22 @@ final class MonolithService {
 
 struct MonolithView: View {
     @Bindable var service: MonolithService
-    @State private var minutes = 25
 
     var body: some View {
         Form {
             Section {
                 VStack(spacing: 16) {
                     Image(systemName: "moon.circle.fill").font(.system(size: 48)).foregroundStyle(.indigo)
-                    Text(service.isActive ? clock : String(format: "%02d:00", minutes))
+                    Text(service.isActive ? clock : String(format: "%02d:00", service.durationMinutes))
                         .font(.system(size: 48, weight: .light, design: .monospaced)).monospacedDigit()
                     Text(service.isActive ? "Your active window stays in the light." : "Dim the desktop and settle into one thing.").foregroundStyle(.secondary)
                     Button(service.isActive ? "End Session" : "Begin Focus") {
-                        if service.isActive { service.stop() } else { service.start(minutes: minutes) }
+                        if service.isActive { service.stop() } else { service.start() }
                     }.buttonStyle(BezelActionStyle(prominent: true)).controlSize(.large)
                 }.frame(maxWidth: .infinity).padding(.vertical, 28)
             }
             Section("Session") {
-                Stepper("Duration: \(minutes) minutes", value: $minutes, in: 5...240, step: 5).disabled(service.isActive)
+                Stepper("Duration: \(service.durationMinutes) minutes", value: $service.durationMinutes, in: 5...240, step: 5).disabled(service.isActive)
                 LabeledContent("Background dimming", value: "\(Int(service.dimming * 100))%")
                 Slider(value: $service.dimming, in: 0.20...0.85, step: 0.05) {
                     Text("Background dimming")

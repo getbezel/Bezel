@@ -109,6 +109,13 @@ struct DragWheelView: View {
                                         Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([output]) }
                                     }
                                 }
+                                .contentShape(Rectangle())
+                                .contextMenu {
+                                    if let output = job.output {
+                                        Button("Show Result in Finder") { NSWorkspace.shared.activateFileViewerSelecting([output]) }
+                                    }
+                                    Button("Show Original in Finder") { NSWorkspace.shared.activateFileViewerSelecting([job.source]) }
+                                }
                             }
                         }
                     }

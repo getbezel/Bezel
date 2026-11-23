@@ -37,7 +37,7 @@ struct StudioSessionBar: View {
                     if !model.monolith.isActive { model.selection = .monolith }
                 }
             } label: {
-                let remaining = model.monolith.isActive ? model.monolith.remainingSeconds : 1500
+                let remaining = model.monolith.isActive ? model.monolith.remainingSeconds : model.monolith.durationMinutes * 60
                 HStack(spacing: 8) {
                     Image(systemName: model.monolith.isActive ? "stop.circle.fill" : "circle.dotted")
                         .foregroundStyle(StudioColor.blue)
@@ -45,7 +45,7 @@ struct StudioSessionBar: View {
                     Text(String(format: "%02d:%02d", remaining / 60, remaining % 60))
                         .monospacedDigit().foregroundStyle(.secondary)
                 }
-            }.help(model.monolith.isActive ? "End focus session" : "Start a 25-minute focus session")
+            }.help(model.monolith.isActive ? "End focus session" : "Start a \(model.monolith.durationMinutes)-minute focus session")
             Spacer()
             let player = model.nowPlaying
             let track = player.selected

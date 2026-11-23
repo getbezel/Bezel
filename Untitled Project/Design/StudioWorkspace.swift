@@ -47,31 +47,52 @@ struct StudioWorkspace: View {
             }
             if let selected {
                 HStack(alignment: .top, spacing: 14) {
-                    ScrollView {
-                        LazyVStack(spacing: 2) {
-                            ForEach(entries) { item in
-                                Button {
-                                    selection = item.id
-                                    listFocused = true
-                                } label: {
-                                    HStack {
-                                        Image(systemName: item.symbol).foregroundStyle(StudioColor.blue).frame(width: 18)
-                                        VStack(alignment: .leading, spacing: 3) {
-                                            Text(item.title).font(.callout).lineLimit(1)
-                                            Text(item.source).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                                        }
-                                        Spacer(minLength: 0)
-                                    }.padding(9).background(item.id == selected.id ? StudioColor.blue.opacity(0.16) : .clear,
-                                                            in: RoundedRectangle(cornerRadius: 6)).contentShape(Rectangle())
-                                }.buttonStyle(.plain)
-                                    .accessibilityAddTraits(item.id == selected.id ? .isSelected : [])
+                    ScrollViewReader { proxy in
+                        ScrollView {
+                            LazyVStack(spacing: 2) {
+                                ForEach(entries) { item in
+                                    Button {
+                                        selection = item.id
+                                        listFocused = true
+                                    } label: {
+                                        HStack {
+                                            Image(systemName: item.symbol).foregroundStyle(StudioColor.blue).frame(width: 18)
+                                            VStack(alignment: .leading, spacing: 3) {
+                                                Text(item.title).font(.callout).lineLimit(1)
+                                                Text(item.source).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                                            }
+                                            Spacer(minLength: 0)
+                                        }.padding(9).background(item.id == selected.id ? StudioColor.blue.opacity(0.16) : .clear,
+                                                                in: RoundedRectangle(cornerRadius: 6)).contentShape(Rectangle())
+                                    }.buttonStyle(.plain)
+                                        .contextMenu { menu(for: item) }
+                                        .id(item.id)
+                                        .accessibilityAddTraits(item.id == selected.id ? .isSelected : [])
+                                }
                             }
+                        }
+                        .onChange(of: selection) { _, id in
+                            if let id { proxy.scrollTo(id) }
                         }
                     }
                     .frame(width: 195)
                     .focusable()
                     .focused($listFocused)
+                    .onAppear { listFocused = true }
                     .onDeleteCommand { delete(selected) }
+                    .onMoveCommand { direction in
+                        guard let index = entries.firstIndex(where: { $0.id == selected.id }) else { return }
+                        switch direction {
+                        case .up where index > 0: selection = entries[index - 1].id
+                        case .down where index + 1 < entries.count: selection = entries[index + 1].id
+                        default: break
+                        }
+                    }
+                    .onKeyPress("c", phases: .down) { press in
+                        guard press.modifiers == .command else { return .ignored }
+                        copy(selected)
+                        return .handled
+                    }
                     Divider()
                     inspector(selected).id(selected.id)
                 }
@@ -89,13 +110,18 @@ struct StudioWorkspace: View {
             }
         }.padding(24)
             .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(targeted ? StudioColor.blue : .clear, lineWidth: 2).allowsHitTesting(false))
+            .onChange(of: entries.map(\.id), initial: true) { _, ids in
+                if selection.map(ids.contains) != true { selection = ids.first }
+            }
             .onDrop(of: [UTType.fileURL, .image, .plainText], isTargeted: $targeted, perform: model.shelf.acceptDrop)
     }
 
     private func delete(_ item: DeskItem) {
         let entries = items
         guard let index = entries.firstIndex(where: { $0.id == item.id }) else { return }
-        selection = entries.dropFirst(index + 1).first?.id ?? entries.prefix(index).last?.id
+        if selection == item.id {
+            selection = entries.dropFirst(index + 1).first?.id ?? entries.prefix(index).last?.id
+        }
         switch item {
         case .clip(let entry): model.stack.remove(entry)
         case .shelf(let shelfItem): model.shelf.remove(shelfItem)
@@ -125,24 +151,44 @@ struct StudioWorkspace: View {
                 Text(item.date, style: .time)
             }.font(.caption).foregroundStyle(.secondary)
             HStack {
-                switch item {
-                case .clip(let entry):
-                    Button("Copy", systemImage: "doc.on.doc") { model.stack.copy(entry) }
-                    Button("Keep on Shelf", systemImage: "tray.and.arrow.down") {
-                        Task { await model.stack.keepOnShelf(entry, shelf: model.shelf) }
-                    }.disabled(entry.kind == .binary)
-                case .shelf(let shelfItem):
-                    Button("Copy", systemImage: "doc.on.doc") { model.shelf.copy(shelfItem) }
-                    if case .file = shelfItem.content {
-                        Button("Quick Look", systemImage: "eye") { model.shelf.preview(shelfItem) }
-                        Button("Show in Finder") { model.shelf.reveal(shelfItem) }
-                    }
-                }
+                itemActions(for: item)
                 Spacer()
                 Button("Delete", systemImage: "trash", role: .destructive) { delete(item) }
                     .help("Delete the selected Workspace item (⌫)")
             }.controlSize(.small)
         }
+    }
+
+    private func copy(_ item: DeskItem) {
+        switch item {
+        case .clip(let entry): model.stack.copy(entry)
+        case .shelf(let shelfItem): model.shelf.copy(shelfItem)
+        }
+    }
+
+    @ViewBuilder private func itemActions(for item: DeskItem) -> some View {
+        Button("Copy", systemImage: "doc.on.doc") { copy(item) }
+        switch item {
+        case .clip(let entry):
+            Button("Keep on Shelf", systemImage: "tray.and.arrow.down") {
+                Task { await model.stack.keepOnShelf(entry, shelf: model.shelf) }
+            }.disabled(entry.kind == .binary)
+        case .shelf(let shelfItem):
+            if case .file = shelfItem.content {
+                Button("Quick Look", systemImage: "eye") { model.shelf.preview(shelfItem) }
+                Button("Show in Finder") { model.shelf.reveal(shelfItem) }
+            }
+        }
+    }
+
+    @ViewBuilder private func menu(for item: DeskItem) -> some View {
+        itemActions(for: item)
+        if case .clip(let entry) = item {
+            Button("Add to Quick Clips", systemImage: "text.badge.plus") { model.stack.enqueue(entry) }
+                .disabled(model.stack.queue.count >= 50)
+        }
+        Divider()
+        Button("Delete", systemImage: "trash", role: .destructive) { delete(item) }
     }
 
     private func textPreview(_ value: String) -> some View {

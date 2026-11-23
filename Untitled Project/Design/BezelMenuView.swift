@@ -20,8 +20,8 @@ struct BezelMenuView: View {
                 }
             }
             Divider()
-            Toggle(isOn: Binding(get: { model.monolith.isActive }, set: { $0 ? model.monolith.start(minutes: 25) : model.monolith.stop() })) {
-                Label(model.monolith.isActive ? "Focus · \(model.monolith.remainingSeconds / 60)m left" : "Focus for 25 minutes", systemImage: "moon")
+            Toggle(isOn: Binding(get: { model.monolith.isActive }, set: { $0 ? model.monolith.start() : model.monolith.stop() })) {
+                Label(model.monolith.isActive ? "Focus · \(model.monolith.remainingSeconds / 60)m left" : "Focus for \(model.monolith.durationMinutes) minutes", systemImage: "moon")
             }
             Toggle(isOn: Binding(get: { model.pulse.isActive }, set: { $0 ? model.pulse.start() : model.pulse.stop() })) {
                 Label("Keep awake", systemImage: "cup.and.saucer")

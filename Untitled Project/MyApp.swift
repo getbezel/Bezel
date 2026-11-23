@@ -40,8 +40,8 @@ struct BezelApp: App {
                     model.dragWheel.chooseFiles()
                 }
                 Divider()
-                Button(model.monolith.isActive ? "End Focus Session" : "Start 25-Minute Focus") {
-                    model.monolith.isActive ? model.monolith.stop() : model.monolith.start(minutes: 25)
+                Button(model.monolith.isActive ? "End Focus Session" : "Start \(model.monolith.durationMinutes)-Minute Focus") {
+                    model.monolith.isActive ? model.monolith.stop() : model.monolith.start()
                 }
             }
         }

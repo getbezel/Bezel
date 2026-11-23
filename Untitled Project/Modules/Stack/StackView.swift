@@ -9,6 +9,7 @@ struct StackView: View {
     @State private var isSelecting = false
     @State private var confirmClear = false
     @FocusState private var historyFocused: Bool
+    @FocusState private var searchFocused: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -31,8 +32,11 @@ struct StackView: View {
             }.controlSize(.small)
             quickClips
             HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                TextField("Search text, images, files, or app", text: $service.searchText).textFieldStyle(.plain)
+                Button { searchFocused = true } label: { Image(systemName: "magnifyingglass") }
+                    .buttonStyle(.plain).foregroundStyle(.secondary).keyboardShortcut("f")
+                    .accessibilityLabel("Find in Stack").help("Find in Stack (⌘F)")
+                TextField("Search text, images, files, or app", text: $service.searchText)
+                    .textFieldStyle(.plain).focused($searchFocused)
                 if !service.searchText.isEmpty {
                     Button { service.searchText = "" } label: { Image(systemName: "xmark.circle.fill") }
                         .buttonStyle(.plain).foregroundStyle(.secondary).help("Clear search")
@@ -41,6 +45,11 @@ struct StackView: View {
             historyArea.frame(minHeight: 120, maxHeight: .infinity)
                 .focusable(isSelecting).focused($historyFocused)
                 .onDeleteCommand { if isSelecting { deleteSelection() } }
+                .onKeyPress("a", phases: .down) { press in
+                    guard isSelecting, press.modifiers == .command else { return .ignored }
+                    selectedIDs = Set(service.filteredHistory.map(\.id))
+                    return .handled
+                }
                 .onExitCommand { isSelecting = false; selectedIDs.removeAll() }
             HStack(spacing: 12) {
                 Text(service.statusMessage ?? (isSelecting ? "Click clips to select them, then delete them together." : "Clips stay in memory until Bezel quits."))
@@ -74,6 +83,7 @@ struct StackView: View {
                                       isSelected: selectedIDs.contains(entry.id), showsSelection: isSelecting,
                                       removeAction: { service.remove(entry) }) {
                             if isSelecting {
+                                historyFocused = true
                                 if selectedIDs.contains(entry.id) { selectedIDs.remove(entry.id) }
                                 else { selectedIDs.insert(entry.id) }
                             } else { previewEntry = entry }

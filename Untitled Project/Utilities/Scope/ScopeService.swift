@@ -340,6 +340,15 @@ struct ScopeView: View {
                                     Image(systemName: child.isDirectory ? "chevron.right" : "arrow.up.right").font(.caption).foregroundStyle(.tertiary)
                                 }.padding(.vertical, 10).padding(.horizontal, 12).contentShape(Rectangle())
                             }.buttonStyle(.plain)
+                            .contextMenu {
+                                Button("Show in Finder", systemImage: "folder") {
+                                    NSWorkspace.shared.activateFileViewerSelecting([child.url])
+                                }
+                                Button("Copy Path", systemImage: "doc.on.doc") {
+                                    NSPasteboard.general.clearContents()
+                                    NSPasteboard.general.setString(child.url.path, forType: .string)
+                                }
+                            }
                             Divider()
                         }
                     }.background(.background, in: RoundedRectangle(cornerRadius: 12))
