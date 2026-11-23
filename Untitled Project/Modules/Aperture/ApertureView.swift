@@ -83,6 +83,8 @@ struct IslandView: View {
                         }.padding(.horizontal, 18).frame(maxWidth: .infinity, minHeight: 42)
                     }.buttonStyle(.plain).help("Open playback controls")
                 }
+            case .teleprompter:
+                NotchReadingView(service: service).frame(height: 126)
             case .shelf:
                 VStack(spacing: 9) {
                     Image(systemName: "tray.and.arrow.down").font(.title2).foregroundStyle(.cyan)
@@ -109,7 +111,7 @@ struct IslandView: View {
             }
         }
         .onDrop(of: [UTType.fileURL, UTType.image, UTType.plainText], isTargeted: nil) { providers in
-            guard service.showsShelf else { return false }
+            guard !service.reader.active, service.showsShelf else { return false }
             let accepted = service.acceptDrop?(providers) ?? false
             service.finishDrop()
             if accepted { service.showClipboard("Added to Shelf") }
@@ -347,6 +349,7 @@ struct ApertureView: View {
             VStack(alignment: .leading, spacing: 24) {
                 Text("Choose what appears at the notch.").foregroundStyle(.secondary)
                 momentPreview
+                ScriptComposer(service: service)
                 GroupBox("Show in Aperture") {
                     VStack(alignment: .leading, spacing: 12) {
                         Toggle("Clipboard previews", isOn: $service.showsClipboard)

@@ -23,6 +23,10 @@
 	</array>
 	<key>GIDClientID</key>
 	<string>$(BEZEL_GOOGLE_CLIENT_ID)</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Follow my voice uses your microphone to advance your script as you read it aloud.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Bezel matches spoken words to your teleprompter script on this Mac.</string>
 	<key>NSFocusStatusUsageDescription</key>
 	<string>Bezel shows a brief notch notification when your shared Focus status changes. It does not change your Focus settings.</string>
 	<key>NSPrincipalClass</key>

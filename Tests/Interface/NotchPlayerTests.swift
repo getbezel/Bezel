@@ -7,6 +7,67 @@ import SwiftUI
         if !condition { fatalError(message) }
     }
 
+    @MainActor static func checkTeleprompter(_ service: ApertureService) async {
+        let script = PromptScript("Read this first.\nThen pause HERE!\nThen pause here.")
+        require(script.lines.map(\.text).count == 3, "Script retains intentional line breaks")
+        let long = PromptScript(String(repeating: "é", count: 83))
+        require(long.lines.map(\.text).joined().count == 83 && long.lines.count == 3, "Long words wrap without loss")
+        require(PromptScript("  \n\t ").lines.isEmpty, "Blank scripts do not open")
+        var speech = PromptSpeechPosition(start: 0)
+        require(speech.update("", in: script) == 0 && speech.update("background noise", in: script) == 0,
+                "Silence and unrelated speech hold the reader")
+        require(speech.update("Read this", in: script) == 2, "Spoken words advance the script")
+        require(speech.update("read this", in: script) == 2, "Repeated partials are idempotent")
+        require(speech.update("read this FIRST then pause here", in: script) == 6, "A phrase can span two lines")
+        require(speech.update("read this first then pause HERE!", in: script) == 6,
+                "Revised casing or punctuation must not consume the repeated line")
+        require(speech.update("read this first then pause here then pause here", in: script) == 9, "Repeated phrases need fresh speech")
+        var skipped = PromptSpeechPosition(start: 0)
+        require(skipped.update("then", in: script) == 0 && skipped.update("then pause", in: script) == 5,
+                "A pair can resync after an omission, even across two partials")
+        _ = NSApplication.shared
+        require(service.readAtNotch("First\nSecond\nThird"), "A text clip starts a reader")
+        let reader = service.reader
+        guard let panel = NSApp.windows.compactMap({ $0 as? AperturePanel }).first(where: { $0.readerKeyHandler != nil }) else {
+            fatalError("A reading session must present an Aperture panel")
+        }
+        func send(_ key: UInt16) {
+            let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
+                                         windowNumber: panel.windowNumber, context: nil, characters: "",
+                                         charactersIgnoringModifiers: "", isARepeat: false, keyCode: key)!
+            panel.sendEvent(event)
+        }
+        send(49)
+        require(!reader.playing && reader.line == 0, "Pause holds the first line")
+        send(125)
+        send(126)
+        require(reader.line == 0, "Up steps back in the focused reader")
+        send(125)
+        require(reader.line == 1 && !reader.playing, "Manual stepping preserves pause")
+        service.showSystemFocus(true)
+        service.showTrackChange("New track")
+        service.showClipboard("Copied")
+        service.expandPlayer()
+        service.update(focusRemaining: 0, playing: true, level: 0, title: "Track", bands: [])
+        require(service.state == .teleprompter && service.height <= service.canvasHeight &&
+                service.width <= service.canvasWidth, "Reading takes precedence and fits the native canvas")
+        reader.toggle()
+        try? await Task.sleep(for: .milliseconds(1450))
+        require(reader.playing && reader.line == 2, "Timed playback advances at its configured pace")
+        try? await Task.sleep(for: .milliseconds(1400))
+        require(reader.finished && !reader.playing && reader.line == 2, "End holds the final line")
+        reader.toggle()
+        require(reader.playing && !reader.finished && reader.line == 0, "Replay returns to line one")
+        send(53)
+        require(!reader.active && !reader.playing && service.state == .nowPlaying, "Closing restores the current moment")
+        service.isEnabled = false
+        require(service.readAtNotch("Solo") && !service.isEnabled, "Explicit reading respects ambient notch preference")
+        service.finishReading()
+        require(service.state == .idle && !reader.active && !service.isEnabled, "Explicit reading leaves no idle panel when disabled")
+        service.isEnabled = true
+        print("Teleprompter checks passed: text wrapping, cumulative speech alignment, silence, repeated phrases, manual and timed playback, replay, interruption priority, and cleanup.")
+    }
+
     @MainActor static func main() async {
         let domain = "Bezel.Notch.Tests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: domain)!
@@ -97,6 +158,7 @@ import SwiftUI
         require(!restored.showsClipboard && restored.showsMusic && !restored.showsFocusTimer && !restored.showsShelf,
                 "Each moment choice persists independently")
         restored.stop()
+        await checkTeleprompter(service)
         if let path = ProcessInfo.processInfo.environment["BEZEL_NOTCH_PREVIEW_PATH"] {
             _ = NSApplication.shared
             service.update(focusRemaining: 0, playing: false, level: 0, title: "A little room to listen", bands: [],

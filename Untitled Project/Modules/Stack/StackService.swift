@@ -436,6 +436,16 @@ final class StackService {
         return ClipboardPayload(entry: entry, items: items)
     }
 
+    func scriptText(for entry: ClipboardEntry) async -> String? {
+        guard entry.kind == .text || entry.kind == .richText,
+              let payload = await store.payload(for: entry.id) else { return nil }
+        let parts = pasteboardItems(for: payload).compactMap { item in
+            if let plain = item.string(forType: .string), !plain.isEmpty { return plain }
+            return item.data(forType: .rtf).flatMap { NSAttributedString(rtf: $0, documentAttributes: nil)?.string }
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: "\n")
+    }
+
     func keepOnShelf(_ entry: ClipboardEntry, shelf: ShelfService) async {
         guard let payload = await store.payload(for: entry.id) else {
             shelf.statusMessage = "That clip is no longer in Stack."

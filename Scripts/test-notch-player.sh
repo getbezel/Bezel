@@ -14,6 +14,10 @@ xcrun swiftc -swift-version 6 -target "$(uname -m)-apple-macos15.0" -O \
   "$bezel_root/Untitled Project/Design/GlassAppearance.swift" \
   "$bezel_root/Untitled Project/Modules/Aperture/FocusStatusMonitor.swift" \
   "$bezel_root/Untitled Project/Modules/Aperture/MarqueeText.swift" \
+  "$bezel_root/Untitled Project/Modules/Aperture/PromptScript.swift" \
+  "$bezel_root/Untitled Project/Modules/Aperture/PromptVoiceInput.swift" \
+  "$bezel_root/Untitled Project/Modules/Aperture/NotchTeleprompter.swift" \
+  "$bezel_root/Untitled Project/Modules/Aperture/NotchReadingView.swift" \
   "$bezel_root/Untitled Project/Modules/Aperture/ApertureService.swift" \
   "$bezel_root/Untitled Project/Modules/Aperture/ApertureView.swift" \
   "$bezel_root/Tests/Interface/NotchPlayerTests.swift" "$bezel_notch_build/player.o" \

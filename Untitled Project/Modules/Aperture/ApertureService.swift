@@ -7,7 +7,7 @@ import UniformTypeIdentifiers
 
 /// Transient states take precedence over long-lived focus and playback states.
 enum IslandState: Equatable {
-    case idle, clipboard(String), focus, nowPlaying, shelf, systemFocus(Bool), track(String)
+    case idle, clipboard(String), focus, nowPlaying, shelf, teleprompter, systemFocus(Bool), track(String)
 }
 
 @MainActor @Observable
@@ -49,6 +49,7 @@ final class ApertureService {
             refreshMomentPreferences()
         }
     }
+    let reader = NotchTeleprompter()
     private(set) var state: IslandState = .idle
     private(set) var hasNotch = NSScreen.screens.contains { $0.safeAreaInsets.top > 0 }
     private(set) var clipboardThumbnail: Data?
@@ -116,6 +117,7 @@ final class ApertureService {
         case .clipboard, .systemFocus, .track: max(notchWidth + 180, 370)
         case .focus: max(notchWidth + 170, 350)
         case .nowPlaying: isPlayerExpanded ? max(notchWidth + 180, 420) : max(notchWidth + 160, 350)
+        case .teleprompter: canvasWidth - 16
         case .shelf: max(notchWidth + 170, 360)
         }
     }
@@ -125,6 +127,7 @@ final class ApertureService {
         case .clipboard, .systemFocus, .track: notchHeight + 56
         case .focus: notchHeight + (isHovered ? 32 : 0)
         case .nowPlaying: notchHeight + (isPlayerExpanded ? 264 : (isHovered ? 42 : 0))
+        case .teleprompter: notchHeight + 126
         case .shelf: notchHeight + 115
         }
     }
@@ -142,8 +145,42 @@ final class ApertureService {
         notificationDuration = duration.isFinite ? min(6, max(1.6, duration)) : 2.8
     }
 
+    @discardableResult
+    func readAtNotch(_ text: String) -> Bool {
+        guard reader.open(text) else { return false }
+        dismissTask?.cancel()
+        dragExitTask?.cancel()
+        isPlayerExpanded = false
+        start()
+        transition(to: .teleprompter)
+        reposition()
+        panel?.readerKeyHandler = { [weak self] key in
+            guard let self, reader.active else { return false }
+            switch key {
+            case 49: reader.toggle()
+            case 126: reader.step(-1)
+            case 125: reader.step(1)
+            case 53: finishReading()
+            default: return false
+            }
+            return true
+        }
+        panel?.makeKeyAndOrderFront(nil)
+        return true
+    }
+
+    func finishReading() {
+        panel?.readerKeyHandler = nil
+        if panel?.isKeyWindow == true { panel?.resignKey() }
+        reader.close()
+        if isEnabled {
+            restorePersistentState()
+            reposition()
+        } else { stop() }
+    }
+
     func expandPlayer() {
-        guard isEnabled, showsMusic, hasMedia else { return }
+        guard !reader.active, isEnabled, showsMusic, hasMedia else { return }
         dismissTask?.cancel()
         statusMessage = nil
         animatePlayer { isPlayerExpanded = true; state = .nowPlaying }
@@ -180,7 +217,7 @@ final class ApertureService {
     }
 
     func start() {
-        guard isEnabled, panel == nil else { return }
+        guard isEnabled || reader.active, panel == nil else { return }
         let panel = AperturePanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         panel.level = .screenSaver
         panel.backgroundColor = .clear
@@ -229,6 +266,8 @@ final class ApertureService {
     }
 
     func stop() {
+        panel?.readerKeyHandler = nil
+        reader.close()
         dismissTask?.cancel()
         dragExitTask?.cancel()
         if let displayObserver { NotificationCenter.default.removeObserver(displayObserver) }
@@ -251,7 +290,7 @@ final class ApertureService {
     }
 
     func showClipboard(_ text: String, thumbnail: Data? = nil) {
-        guard isEnabled, showsClipboard else { return }
+        guard !reader.active, isEnabled, showsClipboard else { return }
         dismissTask?.cancel()
         clipboardThumbnail = thumbnail
         transition(to: .clipboard(String(text.prefix(60))))
@@ -259,14 +298,14 @@ final class ApertureService {
     }
 
     func showSystemFocus(_ active: Bool) {
-        guard isEnabled else { return }
+        guard !reader.active, isEnabled else { return }
         dismissTask?.cancel()
         transition(to: .systemFocus(active))
         scheduleDismissal()
     }
 
     func showTrackChange(_ title: String) {
-        guard isEnabled, showsMusic, !isPlayerExpanded else { return }
+        guard !reader.active, isEnabled, showsMusic, !isPlayerExpanded else { return }
         dismissTask?.cancel()
         transition(to: .track(String(title.prefix(100))))
         scheduleDismissal()
@@ -362,7 +401,7 @@ final class ApertureService {
     }
 
     private func checkDrag() {
-        guard showsShelf, let screen else { return }
+        guard !reader.active, showsShelf, let screen else { return }
         let point = NSEvent.mouseLocation
         let hotZone = NSRect(x: notchCenterX - 220, y: screen.frame.maxY - 100, width: 440, height: 100)
         guard hotZone.contains(point), NSPasteboard(name: .drag).changeCount != lastDragChangeCount, NSPasteboard(name: .drag).types?.isEmpty == false else { return }
@@ -402,6 +441,7 @@ final class ApertureService {
     }
 
     private func restorePersistentState() {
+        guard !reader.active else { return }
         transition(to: showsMusic && isPlayerExpanded && hasMedia ? .nowPlaying :
             (showsFocusTimer && remainingSeconds > 0 ? .focus : (showsMusic && hasMedia ? .nowPlaying : .idle)))
     }
@@ -414,7 +454,7 @@ final class ApertureService {
         // The native canvas stays large enough for both the entering and retiring content.
     }
     private func reposition() {
-        screen = NSScreen.screens.first(where: { $0.safeAreaInsets.top > 0 }) ?? (showOnExternalDisplay ? NSScreen.main : nil)
+        screen = NSScreen.screens.first(where: { $0.safeAreaInsets.top > 0 }) ?? ((showOnExternalDisplay || reader.active) ? NSScreen.main : nil)
         hasNotch = NSScreen.screens.contains { $0.safeAreaInsets.top > 0 }
         guard let screen else { panel?.orderOut(nil); return }
         if let left = screen.auxiliaryTopLeftArea, let right = screen.auxiliaryTopRightArea {
@@ -471,6 +511,17 @@ final class ApertureService {
 }
 
 final class AperturePanel: NSPanel {
-    override var canBecomeKey: Bool { false }
+    var readerKeyHandler: ((UInt16) -> Bool)?
+    override var canBecomeKey: Bool { readerKeyHandler != nil }
+
+    override func sendEvent(_ event: NSEvent) {
+        if event.type == .keyDown, isKeyWindow,
+           event.modifierFlags.intersection([.command, .control, .option, .shift]).isEmpty,
+           let handler = readerKeyHandler {
+            if event.isARepeat && (event.keyCode == 49 || event.keyCode == 53) { return }
+            if handler(event.keyCode) { return }
+        }
+        super.sendEvent(event)
+    }
     override var canBecomeMain: Bool { false }
 }

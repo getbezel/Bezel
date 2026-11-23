@@ -20,6 +20,14 @@ and seek tests. Universal archive and mounted DMG verification are recorded in
 AperturePreferencesVerification.json. Live interaction on another Mac is not
 established by these checks.
 
+## Notch teleprompter
+
+Choose **Read at Notch** on a text or rich-text clip in Workspace, or paste a script under **Aperture → Notch teleprompter**. The current and upcoming lines sit just below the camera. The reader also works at the top of a display without a notch.
+
+The speed menu sets words per minute. Choose **Follow my voice** to match speech to the script on this Mac. This mode asks for microphone and speech recognition access and requires on-device recognition for the current language. Timed scrolling and manual stepping work without either permission.
+
+Click the reader for keyboard control. Space pauses or resumes, ↑ and ↓ step between lines, and Escape closes the reader. Other apps keep their normal typing shortcuts when they have focus.
+
 ## Compact height correction
 
 Compact music and focus states no longer add four points below the camera/menu

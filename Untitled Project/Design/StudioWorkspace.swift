@@ -29,6 +29,7 @@ private enum DeskItem: Identifiable {
 struct StudioWorkspace: View {
     let model: BezelModel
     @Binding var selection: UUID?
+    @State private var readingError: String?
     @State private var targeted = false
     @FocusState private var listFocused: Bool
 
@@ -109,6 +110,9 @@ struct StudioWorkspace: View {
                 Text(message).font(.caption).foregroundStyle(.secondary)
             }
         }.padding(24)
+            .alert("Unable to read this clip", isPresented: Binding(get: { readingError != nil }, set: { if !$0 { readingError = nil } })) {
+                Button("OK") { readingError = nil }
+            } message: { Text(readingError ?? "") }
             .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(targeted ? StudioColor.blue : .clear, lineWidth: 2).allowsHitTesting(false))
             .onChange(of: entries.map(\.id), initial: true) { _, ids in
                 if selection.map(ids.contains) != true { selection = ids.first }
@@ -173,8 +177,22 @@ struct StudioWorkspace: View {
             Button("Keep on Shelf", systemImage: "tray.and.arrow.down") {
                 Task { await model.stack.keepOnShelf(entry, shelf: model.shelf) }
             }.disabled(entry.kind == .binary)
+            if entry.kind == .text || entry.kind == .richText {
+                Button("Read at Notch", systemImage: "text.line.first.and.arrowtriangle.forward") {
+                    Task {
+                        guard let text = await model.stack.scriptText(for: entry), model.aperture.readAtNotch(text) else {
+                            readingError = "The clip is empty or has left Stack."
+                            return
+                        }
+                    }
+                }
+            }
         case .shelf(let shelfItem):
-            if case .file = shelfItem.content {
+            if case .text(let text) = shelfItem.content {
+                Button("Read at Notch", systemImage: "text.line.first.and.arrowtriangle.forward") {
+                    if !model.aperture.readAtNotch(text) { readingError = "This item contains no readable text." }
+                }
+            } else if case .file = shelfItem.content {
                 Button("Quick Look", systemImage: "eye") { model.shelf.preview(shelfItem) }
                 Button("Show in Finder") { model.shelf.reveal(shelfItem) }
             }
