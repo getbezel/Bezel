@@ -30,6 +30,7 @@ struct StudioWorkspace: View {
     let model: BezelModel
     @Binding var selection: UUID?
     @State private var targeted = false
+    @FocusState private var listFocused: Bool
 
     private var items: [DeskItem] {
         (model.stack.history.map(DeskItem.clip) + model.shelf.items.map(DeskItem.shelf)).sorted { $0.date > $1.date }
@@ -49,7 +50,10 @@ struct StudioWorkspace: View {
                     ScrollView {
                         LazyVStack(spacing: 2) {
                             ForEach(entries) { item in
-                                Button { selection = item.id } label: {
+                                Button {
+                                    selection = item.id
+                                    listFocused = true
+                                } label: {
                                     HStack {
                                         Image(systemName: item.symbol).foregroundStyle(StudioColor.blue).frame(width: 18)
                                         VStack(alignment: .leading, spacing: 3) {
@@ -63,7 +67,11 @@ struct StudioWorkspace: View {
                                     .accessibilityAddTraits(item.id == selected.id ? .isSelected : [])
                             }
                         }
-                    }.frame(width: 195)
+                    }
+                    .frame(width: 195)
+                    .focusable()
+                    .focused($listFocused)
+                    .onDeleteCommand { delete(selected) }
                     Divider()
                     inspector(selected).id(selected.id)
                 }
@@ -82,6 +90,17 @@ struct StudioWorkspace: View {
         }.padding(24)
             .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(targeted ? StudioColor.blue : .clear, lineWidth: 2).allowsHitTesting(false))
             .onDrop(of: [UTType.fileURL, .image, .plainText], isTargeted: $targeted, perform: model.shelf.acceptDrop)
+    }
+
+    private func delete(_ item: DeskItem) {
+        let entries = items
+        guard let index = entries.firstIndex(where: { $0.id == item.id }) else { return }
+        selection = entries.dropFirst(index + 1).first?.id ?? entries.prefix(index).last?.id
+        switch item {
+        case .clip(let entry): model.stack.remove(entry)
+        case .shelf(let shelfItem): model.shelf.remove(shelfItem)
+        }
+        listFocused = true
     }
 
     @ViewBuilder private func inspector(_ item: DeskItem) -> some View {
@@ -119,6 +138,9 @@ struct StudioWorkspace: View {
                         Button("Show in Finder") { model.shelf.reveal(shelfItem) }
                     }
                 }
+                Spacer()
+                Button("Delete", systemImage: "trash", role: .destructive) { delete(item) }
+                    .help("Delete the selected Workspace item (⌫)")
             }.controlSize(.small)
         }
     }
