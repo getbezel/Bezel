@@ -7,15 +7,8 @@ struct LensView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
-                HStack(alignment: .top, spacing: 20) {
-                    ModuleIcon(module: .lens, size: 56)
-                    VStack(alignment: .leading, spacing: 7) {
-                        Text("Text, wherever you see it.").font(.title2.weight(.semibold))
-                        Text("Select part of your display. Lens recognizes the text locally and copies it straight to Stack.")
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer(minLength: 0)
-                }
+                Text("Select part of your display to recognize text and copy it to Stack.")
+                    .foregroundStyle(.secondary)
                 HStack(spacing: 12) {
                     Button { service.startCapture() } label: { Label("Capture Text", systemImage: "text.viewfinder") }
                         .buttonStyle(BezelActionStyle(prominent: true)).controlSize(.large).disabled(service.isBusy)

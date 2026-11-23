@@ -13,10 +13,7 @@ struct StackView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 5) {
-                    Text("Everything you copied.").font(.title2.weight(.semibold))
-                    Text("Save a few Quick Clips. Choose exactly what to paste.").font(.callout).foregroundStyle(.secondary)
-                }
+                Text("Clipboard history and Quick Clips.").foregroundStyle(.secondary)
                 Spacer()
                 Toggle("History", isOn: $service.isEnabled).toggleStyle(.switch)
             }

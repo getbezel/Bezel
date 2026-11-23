@@ -10,12 +10,8 @@ struct AirBridgeView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 HStack(alignment: .top) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Sound, in its place.")
-                            .font(.system(size: 28, weight: .semibold, design: .rounded))
-                        Text("Send each application to its own speakers or headphones.")
-                            .foregroundStyle(.secondary)
-                    }
+                    Text("Send each application to its own speakers or headphones.")
+                        .foregroundStyle(.secondary)
                     Spacer(minLength: 16)
                     if service.activeRouteCount > 0 || service.channels.contains(where: \.isBusy) {
                         Button("Stop All", systemImage: "stop.circle") { service.stopAllRoutes() }

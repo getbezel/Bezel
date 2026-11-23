@@ -19,7 +19,7 @@ struct BezelSettingsView: View {
                 }
                 Section("Menu icons") { MenuBarManagerControls(manager: model.menuShelf.manager) }
                 Section {
-                    ForEach(BezelModule.allCases.filter { $0 != .overview }) { module in
+                    ForEach(BezelModule.utilities) { module in
                         Toggle(module.title, isOn: Binding(get: { model.menuShelf.pinned.contains(module) }, set: { _ in model.menuShelf.togglePin(module) }))
                     }
                 } header: { Text("Menu bar shelf") } footer: {

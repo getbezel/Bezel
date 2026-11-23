@@ -15,12 +15,8 @@ struct DragWheelView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 HStack(spacing: 17) {
-                    ModuleIcon(module: .dragWheel, size: 58)
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("A new format. One gesture.").font(.title2.weight(.semibold))
-                        Text("Hold \(service.trigger.displayName) while dragging a file, then drop on a format.")
-                            .foregroundStyle(.secondary)
-                    }
+                    Text("Hold \(service.trigger.displayName) while dragging a file, then drop on a format.")
+                        .foregroundStyle(.secondary)
                     Spacer()
                     Toggle("Enable DragWheel", isOn: $service.isEnabled).labelsHidden().help("Enable DragWheel")
                 }

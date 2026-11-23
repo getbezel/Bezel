@@ -8,7 +8,7 @@ struct CleaningView: View {
             VStack(alignment: .leading, spacing: 24) {
                 VStack(alignment: .leading, spacing: 18) {
                     Image(systemName: "keyboard").font(.system(size: 30, weight: .light)).foregroundStyle(.mint)
-                    Text("A clean slate.").font(.system(size: 30, weight: .medium))
+                    Text("Input shield").font(.headline)
                     Text("Wipe your keyboard, trackpad, and displays without accidental typing or clicks. Cleaning mode covers every connected display in black.")
                         .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     HStack {

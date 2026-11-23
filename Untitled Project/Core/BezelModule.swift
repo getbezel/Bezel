@@ -1,11 +1,13 @@
 import SwiftUI
 
 enum BezelModule: String, CaseIterable, Identifiable {
-    case overview, stack, airBridge, aperture, grid, scope, monolith, shelf, lens, dragWheel, tether, pulse, border, cleaning
+    case overview, workspace, stack, airBridge, aperture, grid, scope, monolith, shelf, lens, dragWheel, tether, pulse, border, cleaning
+    static let utilities: [Self] = [.stack, .shelf, .lens, .dragWheel, .airBridge, .aperture, .grid, .monolith, .border, .scope, .tether, .pulse, .cleaning]
     var id: String { rawValue }
     var title: String {
         switch self {
-        case .overview: "Overview"
+        case .overview: "Home"
+        case .workspace: "Workspace"
         case .stack: "Stack"
         case .airBridge: "AirBridge"
         case .aperture: "Aperture"
@@ -23,7 +25,8 @@ enum BezelModule: String, CaseIterable, Identifiable {
     }
     var symbol: String {
         switch self {
-        case .overview: "square.grid.2x2"
+        case .overview: "house"
+        case .workspace: "rectangle.3.group"
         case .stack: "square.3.layers.3d"
         case .airBridge: "waveform"
         case .aperture: "rectangle.topthird.inset.filled"
@@ -41,7 +44,8 @@ enum BezelModule: String, CaseIterable, Identifiable {
     }
     var subtitle: String {
         switch self {
-        case .overview: "Your workspace, a little more capable."
+        case .overview: "Your workspace at a glance."
+        case .workspace: "Recent clips and items on your Shelf."
         case .stack: "Everything you copy, within reach."
         case .airBridge: "A different destination for every sound."
         case .aperture: "Small moments. Right at the top."
@@ -59,7 +63,7 @@ enum BezelModule: String, CaseIterable, Identifiable {
     }
     var tint: Color {
         switch self {
-        case .overview, .stack, .grid: .blue
+        case .overview, .workspace, .stack, .grid: .blue
         case .airBridge, .pulse: .orange
         case .aperture, .monolith: .purple
         case .scope, .tether: .green
@@ -71,7 +75,7 @@ enum BezelModule: String, CaseIterable, Identifiable {
     }
     var category: String {
         switch self {
-        case .overview: "WORKSPACE"
+        case .overview, .workspace: "WORKSPACE"
         case .stack, .shelf, .lens, .dragWheel: "CAPTURE & COLLECT"
         case .airBridge, .aperture, .grid, .monolith, .border: "WORK & FOCUS"
         case .scope, .tether, .pulse, .cleaning: "SYSTEM"

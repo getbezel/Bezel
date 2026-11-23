@@ -13,7 +13,7 @@ import SwiftUI
             ("welcome-dark-signed-in.png", 680.0, true, "Alex", "preview@example.com"),
             ("welcome-light.png", 680.0, false, "美咲", "preview@example.com")
         ] {
-            let view = WelcomeCard(date: date, firstName: name, email: email, activeCount: 4,
+            let view = WelcomeCard(date: date, firstName: name, email: email,
                                    signIn: {}, signOut: {}, disconnect: {})
                 .padding(20)
                 .frame(width: width, height: 280, alignment: .top)

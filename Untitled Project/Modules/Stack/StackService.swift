@@ -436,16 +436,38 @@ final class StackService {
         return ClipboardPayload(entry: entry, items: items)
     }
 
-    @discardableResult
-    private func writeToPasteboard(_ payload: ClipboardPayload) -> Bool {
-        let items = payload.items.map { representations in
+    func keepOnShelf(_ entry: ClipboardEntry, shelf: ShelfService) async {
+        guard let payload = await store.payload(for: entry.id) else {
+            shelf.statusMessage = "That clip is no longer in Stack."
+            return
+        }
+        let board = NSPasteboard.withUniqueName()
+        defer { board.releaseGlobally() }
+        guard board.writeObjects(pasteboardItems(for: payload)) else {
+            shelf.statusMessage = "This clip could not be read."
+            return
+        }
+        if shelf.acceptPasteboard(board) { return }
+        if let rtf = board.data(forType: .rtf), let richText = NSAttributedString(rtf: rtf, documentAttributes: nil) {
+            shelf.addText(richText.string)
+        } else {
+            shelf.statusMessage = "Shelf accepts files, images, and text."
+        }
+    }
+
+    private func pasteboardItems(for payload: ClipboardPayload) -> [NSPasteboardItem] {
+        payload.items.map { representations in
             let item = NSPasteboardItem()
             for representation in representations { item.setData(representation.data, forType: NSPasteboard.PasteboardType(representation.type)) }
             return item
         }
+    }
+
+    @discardableResult
+    private func writeToPasteboard(_ payload: ClipboardPayload) -> Bool {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
-        let success = pasteboard.writeObjects(items)
+        let success = pasteboard.writeObjects(pasteboardItems(for: payload))
         lastChangeCount = pasteboard.changeCount
         if !success { statusMessage = "The clipboard could not be updated. Please try again." }
         return success

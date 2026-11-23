@@ -141,7 +141,8 @@ struct MonolithView: View {
             Section {
                 VStack(spacing: 16) {
                     Image(systemName: "moon.circle.fill").font(.system(size: 48)).foregroundStyle(.indigo)
-                    Text(service.isActive ? clock : "A little room to focus.").font(service.isActive ? .system(size: 56, weight: .light, design: .rounded) : .title2).monospacedDigit()
+                    Text(service.isActive ? clock : String(format: "%02d:00", minutes))
+                        .font(.system(size: 48, weight: .light, design: .monospaced)).monospacedDigit()
                     Text(service.isActive ? "Your active window stays in the light." : "Dim the desktop and settle into one thing.").foregroundStyle(.secondary)
                     Button(service.isActive ? "End Session" : "Begin Focus") {
                         if service.isActive { service.stop() } else { service.start(minutes: minutes) }

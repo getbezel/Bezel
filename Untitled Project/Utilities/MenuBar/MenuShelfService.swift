@@ -11,7 +11,7 @@ final class MenuShelfService {
     }
     init() {
         if let values = UserDefaults.standard.stringArray(forKey: "menu.pinned") {
-            pinned = values.compactMap(BezelModule.init(rawValue:)).filter { $0 != .overview }
+            pinned = values.compactMap(BezelModule.init(rawValue:)).filter { BezelModule.utilities.contains($0) }
         }
     }
     func togglePin(_ module: BezelModule) {

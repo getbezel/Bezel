@@ -10,11 +10,7 @@ struct ShelfView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
                 HStack(alignment: .top, spacing: 16) {
-                    ModuleIcon(module: .shelf, size: 52)
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text("A little room between apps.").font(.title2.weight(.semibold))
-                        Text("Keep images, files, and text within reach, across every Space.").foregroundStyle(.secondary)
-                    }
+                    Text("Carry files, images, and text between apps and Spaces.").foregroundStyle(.secondary)
                     Spacer()
                     Toggle("Edge activation", isOn: $service.isEnabled).toggleStyle(.switch)
                 }

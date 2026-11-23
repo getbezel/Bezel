@@ -10,8 +10,8 @@ struct BezelApp: App {
     var body: some Scene {
         Window("Bezel", id: "main") {
             ContentView(model: model)
-                .containerBackground(.ultraThinMaterial, for: .window)
-                .frame(minWidth: 900, minHeight: 600)
+                .preferredColorScheme(.dark)
+                .frame(minWidth: 900, minHeight: 620)
                 .onAppear { model.start() }
                 .onOpenURL { model.handle(url: $0) }
         }

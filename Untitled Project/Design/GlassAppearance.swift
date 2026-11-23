@@ -1,6 +1,10 @@
 import SwiftUI
 import AppKit
 
+extension EnvironmentValues {
+    @Entry var studioAppearance = false
+}
+
 /// Keep reading surfaces opaque; glass controls refract the app's own backdrop.
 struct BezelBackdrop: View {
     var tint: Color = .blue
@@ -39,9 +43,11 @@ private struct BezelGlassSurface: ViewModifier {
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.colorSchemeContrast) private var contrast
 
+    @Environment(\.studioAppearance) private var studio
+
     @ViewBuilder func body(content: Content) -> some View {
         let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
-        if reduceTransparency || contrast == .increased {
+        if studio || reduceTransparency || contrast == .increased {
             content.background(Color(nsColor: .controlBackgroundColor), in: shape)
                 .overlay(shape.strokeBorder(.primary.opacity(contrast == .increased ? 0.30 : 0.12), lineWidth: 1))
         } else if #available(macOS 26, *) {
@@ -60,8 +66,10 @@ private struct BezelContentSurface: ViewModifier {
     @Environment(\.colorScheme) private var scheme
     @Environment(\.colorSchemeContrast) private var contrast
 
+    @Environment(\.studioAppearance) private var studio
+
     func body(content: Content) -> some View {
-        let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
+        let shape = RoundedRectangle(cornerRadius: studio ? min(radius, 8) : radius, style: .continuous)
         return content
             .background(Color(nsColor: .controlBackgroundColor).opacity(reduceTransparency || contrast == .increased ? 1 : scheme == .dark ? 0.70 : 0.82), in: shape)
             .overlay(shape.fill(tint.opacity(0.045)).allowsHitTesting(false))

@@ -3,33 +3,39 @@ import SwiftUI
 struct OverviewView: View {
     @Bindable var model: BezelModel
     @Binding var showPermissions: Bool
+    let inspect: (UUID?) -> Void
     @State private var targetedModule: BezelModule?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    private let columns = [GridItem(.adaptive(minimum: 220, maximum: 360), spacing: 16)]
-    private var filtered: [BezelModule] {
-        model.dashboard.order.ids.compactMap(BezelModule.init(rawValue:)).filter {
-            $0 != .overview && (model.search.isEmpty || "\($0.title) \($0.subtitle)".localizedCaseInsensitiveContains(model.search))
-        }
-    }
+    private let columns = [GridItem(.adaptive(minimum: 182), spacing: 10)]
+
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 25) {
-                hero
-                BezelGlassGroup(spacing: 16) {
-                    LazyVGrid(columns: columns, spacing: 16) {
-                        quickControl(title: model.monolith.isActive ? "In your flow" : "A moment of focus",
-                                     value: model.monolith.isActive ? timerText : "25 minutes, just for you", symbol: "moon", tint: .purple) {
-                            model.monolith.isActive ? model.monolith.stop() : model.monolith.start(minutes: 25)
-                        }
-                        quickControl(title: "Your temporary shelf", value: "\(model.shelf.count) items at hand", symbol: "tray", tint: .cyan) { model.shelf.show() }
-                        quickControl(title: "A little extra energy", value: model.pulse.isActive ? "Your Mac is staying awake" : "Keep awake for an hour", symbol: "cup.and.saucer", tint: .orange) {
-                            model.pulse.isActive ? model.pulse.stop() : model.pulse.start(minutes: 60)
+            VStack(alignment: .leading, spacing: 18) {
+                WelcomeHeader(account: model.account)
+                StudioDesk(model: model, inspect: inspect)
+                Text("Quick actions").font(.headline)
+                HStack(spacing: 8) {
+                    Button("Capture text", systemImage: "viewfinder") {
+                        model.selection = .lens
+                        model.lens.startCapture()
+                    }.buttonStyle(BezelActionStyle(prominent: true))
+                    Button("Open Shelf", systemImage: "tray") { model.shelf.show() }
+                    Button(model.monolith.isActive ? "End focus" : "Start focus", systemImage: "moon") {
+                        if model.monolith.isActive { model.monolith.stop() }
+                        else {
+                            model.monolith.start()
+                            if !model.monolith.isActive { model.selection = .monolith }
                         }
                     }
+                    Button(model.pulse.isActive ? "End keep awake" : "Keep awake", systemImage: "cup.and.saucer") {
+                        if model.pulse.isActive { model.pulse.stop() } else { model.pulse.start(minutes: 60) }
+                        if model.pulse.lastError != nil { model.selection = .pulse }
+                    }.help("Toggle a one-hour keep-awake session")
                 }
+                Divider()
                 VStack(alignment: .leading, spacing: 13) {
                     HStack {
-                        SmallSectionLabel(text: model.search.isEmpty ? "YOUR UTILITIES" : "SEARCH RESULTS")
+                        Text("Your utilities").font(.headline)
                         Spacer()
                         Menu {
                             Text("Drag a card onto another to move it.")
@@ -42,8 +48,8 @@ struct OverviewView: View {
                         }.menuStyle(.borderlessButton).fixedSize()
                         .help("Rearrange utility cards, or reset their order")
                     }
-                    LazyVGrid(columns: columns, spacing: 16) {
-                        ForEach(filtered) { module in
+                    LazyVGrid(columns: columns, spacing: 10) {
+                        ForEach(model.dashboard.order.ids.compactMap(BezelModule.init(rawValue:))) { module in
                             UtilityCard(module: module, status: model.status(for: module), targeted: targetedModule == module) { model.selection = module }
                                 .draggable(DashboardModuleTransfer(id: module.rawValue)) {
                                     HStack(spacing: 10) {
@@ -73,9 +79,6 @@ struct OverviewView: View {
                                 .accessibilityAction(named: "Move later") { move(module, by: 1) }
                         }
                     }
-                    if filtered.isEmpty {
-                        ContentUnavailableView.search(text: model.search).frame(maxWidth: .infinity).padding(30)
-                    }
                 }
                 if !model.permissions.accessibility {
                     HStack(spacing: 13) {
@@ -89,10 +92,6 @@ struct OverviewView: View {
                         Button("Set Up") { showPermissions = true }.controlSize(.small)
                     }.padding(16).background(.blue.opacity(0.035), in: RoundedRectangle(cornerRadius: 12))
                 }
-                HStack {
-                    Spacer()
-                    Text("Bezel 1.0").font(.caption)
-                }.foregroundStyle(.tertiary).padding(.top, 1)
             }.padding(28)
                 .frame(maxWidth: 1140, alignment: .leading)
                 .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -104,25 +103,7 @@ struct OverviewView: View {
     private func move(_ module: BezelModule, by delta: Int) {
         rearrange { model.dashboard.nudge(module.rawValue, by: delta) }
     }
-    private var timerText: String {
-        String(format: "%02d:%02d remaining", model.monolith.remainingSeconds / 60, model.monolith.remainingSeconds % 60)
-    }
-    private var hero: some View {
-        WelcomeHeader(account: model.account, activeCount: model.activeCount)
-    }
-    private func quickControl(title: String, value: String, symbol: String, tint: Color, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 11) {
-                Image(systemName: symbol).font(.system(size: 17)).foregroundStyle(tint)
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(title).font(.callout.weight(.medium)).lineLimit(1)
-                    Text(value).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                }
-                Spacer(minLength: 0)
-            }.padding(.horizontal, 15).frame(maxWidth: .infinity, minHeight: 76)
-                .modifier(DashboardCardSurface(tint: tint))
-        }.buttonStyle(DashboardCardPressStyle())
-    }
+
 }
 
 private struct UtilityCard: View {
@@ -135,9 +116,9 @@ private struct UtilityCard: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
         Button(action: action) {
-            VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 7) {
                 HStack {
-                    ModuleIcon(module: module, size: 40)
+                    ModuleIcon(module: module, size: 28)
                         .symbolEffect(.bounce, value: reduceMotion ? 0 : iconPulse)
                     Spacer()
                     VStack(alignment: .trailing, spacing: 5) {
@@ -152,8 +133,9 @@ private struct UtilityCard: View {
                         .lineLimit(2).frame(height: 36, alignment: .top)
                 }
             }
-            .padding(20).frame(maxWidth: .infinity, alignment: .leading)
-            .modifier(DashboardCardSurface(tint: module.tint, targeted: targeted))
+            .padding(13).frame(maxWidth: .infinity, alignment: .leading)
+            .studioSurface()
+            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(StudioColor.blue.opacity(targeted ? 0.75 : hovered ? 0.3 : 0)).allowsHitTesting(false))
         }
         .buttonStyle(DashboardCardPressStyle())
         .onHover { value in hovered = value; if value { iconPulse += 1 } }

@@ -72,7 +72,7 @@ struct IslandView: View {
                 }
             case .nowPlaying:
                 if service.isPlayerExpanded {
-                    ExpandedNotchPlayer(service: service)
+                    ExpandedNotchPlayer(service: service, collapse: service.collapsePlayer)
                         .frame(height: 264)
                         .transition(.opacity.combined(with: .move(edge: .top)))
                 } else if service.isHovered {
@@ -124,6 +124,7 @@ struct IslandView: View {
 
 private struct ExpandedNotchPlayer: View {
     @Bindable var service: ApertureService
+    let collapse: () -> Void
     @State private var volume = 0.5
     @State private var editingVolume = false
     @State private var volumeSourceID: String?
@@ -154,7 +155,7 @@ private struct ExpandedNotchPlayer: View {
                         .font(.caption).foregroundStyle(.white.opacity(0.45)).lineLimit(1)
                 }.frame(maxWidth: .infinity, alignment: .leading)
                 VStack {
-                    Button { service.collapsePlayer() } label: {
+                    Button(action: collapse) {
                         Image(systemName: "chevron.up").font(.system(size: 12, weight: .semibold))
                             .foregroundStyle(.white.opacity(0.6)).frame(width: 26, height: 26)
                             .background(.white.opacity(0.08), in: Circle())
@@ -287,47 +288,83 @@ struct ApertureView: View {
     @Bindable var service: ApertureService
     @Bindable var metadata: NowPlayingMetadata
     @Bindable var focusStatus: FocusStatusMonitor
+    private enum Moment: String, CaseIterable {
+        case music = "Now Playing", clipboard = "Clipboard", focus = "Focus", shelf = "Shelf"
+        var symbol: String {
+            switch self {
+            case .music: "waveform"
+            case .clipboard: "doc.on.clipboard"
+            case .focus: "moon.fill"
+            case .shelf: "tray"
+            }
+        }
+    }
+    @State private var moment = Moment.music
+    @State private var expanded = false
+
+    private var momentLabel: String {
+        switch moment {
+        case .music: service.isEnabled && service.hasMedia ? service.mediaTitle : "No media playing"
+        case .clipboard: if case .clipboard(let text) = service.state { text } else { "Clipboard preview" }
+        case .focus: service.isEnabled && service.remainingSeconds > 0 ? service.timeLabel : "No active focus session"
+        case .shelf: "Open floating Shelf"
+        }
+    }
+
+    private var momentPreview: some View {
+        GroupBox("Notch preview") {
+            VStack(spacing: 16) {
+                Picker("Moment", selection: $moment) {
+                    ForEach(Moment.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                }.pickerStyle(.segmented).labelsHidden().frame(maxWidth: 405)
+                VStack(spacing: 0) {
+                    if moment == .music && expanded && service.hasMedia && service.isEnabled {
+                        ExpandedNotchPlayer(service: service) { expanded = false }
+                            .padding(.top, 9).frame(height: 274)
+                    } else {
+                        HStack(spacing: 12) {
+                            Image(systemName: moment.symbol).foregroundStyle(.blue)
+                            Text(momentLabel).font(.callout.weight(.medium)).lineLimit(1)
+                            Spacer()
+                            if moment == .music && service.isEnabled && service.hasMedia {
+                                Button { expanded = true } label: { Image(systemName: "chevron.down") }
+                                    .buttonStyle(.plain).accessibilityLabel("Expand player")
+                            } else if moment == .clipboard {
+                                Button("Preview") { service.preview() }.disabled(!service.showsClipboard)
+                            } else if moment == .shelf {
+                                Button("Open") { service.openShelf?() }
+                            }
+                        }.padding(15)
+                    }
+                }.frame(width: 334).foregroundStyle(.white)
+                    .background(.black, in: RoundedRectangle(cornerRadius: 16))
+            }.padding(12).frame(maxWidth: .infinity)
+        }
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
-                VStack(spacing: 26) {
-                    HStack(spacing: 20) {
-                        Image(systemName: "moon.fill").foregroundStyle(.indigo)
-                        RoundedRectangle(cornerRadius: 8).fill(.black).frame(width: 130, height: 18)
-                        Text("25:00").font(.system(.caption, design: .monospaced)).foregroundStyle(.white)
-                    }.padding(.horizontal, 20).frame(height: 42)
-                        .background(.black, in: UnevenRoundedRectangle(bottomLeadingRadius: 18, bottomTrailingRadius: 18))
-                    VStack(spacing: 8) {
-                        Text("A quieter kind of notification.").font(.title2.weight(.semibold))
-                        Text("Your clipboard, focus timer, audio, and file shelf.\nAlways close. Never in the way.")
-                            .foregroundStyle(.secondary).multilineTextAlignment(.center)
-                    }
-                }.frame(maxWidth: .infinity).padding(.bottom, 28)
-                    .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 18))
-                Form {
-                    Section {
-                        Toggle("Enable Aperture", isOn: $service.isEnabled)
-                        Toggle("Show a capsule on displays without a notch", isOn: $service.showOnExternalDisplay)
-                        LabeledContent("Display", value: service.hasNotch ? "Camera housing detected" : "No camera housing detected")
-                    } footer: {
-                        Text("Aperture follows the camera housing using your display’s safe area. The optional capsule is centered at the top of other displays.")
-                    }
-                    Section {
+                Text("Choose what appears at the notch.").foregroundStyle(.secondary)
+                momentPreview
+                GroupBox("Show in Aperture") {
+                    VStack(alignment: .leading, spacing: 12) {
                         Toggle("Clipboard previews", isOn: $service.showsClipboard)
                         Toggle("Music & playback controls", isOn: $service.showsMusic)
                         Toggle("Focus session timer", isOn: $service.showsFocusTimer)
                         Toggle("Shelf drop zone", isOn: $service.showsShelf)
-                    } header: { Text("Show in Aperture") } footer: {
-                        Text("Choose what appears in the notch. Turning off a preview keeps its utility running. System Focus notifications can be configured below.")
-                    }
-                    Section("Moments") {
-                        VStack(alignment: .leading, spacing: 8) {
-                            LabeledContent("Moment duration") { Text("\(service.notificationDuration, specifier: "%.1f") seconds") }
-                            Slider(value: $service.notificationDuration, in: 1.6...6, step: 0.2).accessibilityLabel("Notification duration")
-                            Text("Hover a moment to keep it open.").font(.caption).foregroundStyle(.secondary)
-                        }
-                    }
-                }.formStyle(.grouped).scrollDisabled(true).frame(height: 560)
+                    }.toggleStyle(.switch).padding(8)
+                }
+                GroupBox("Behavior") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Toggle("Enable Aperture", isOn: $service.isEnabled)
+                        Toggle("Show a capsule on displays without a notch", isOn: $service.showOnExternalDisplay)
+                        LabeledContent("Display", value: service.hasNotch ? "Camera housing detected" : "No camera housing detected")
+                        LabeledContent("Moment duration") { Text("\(service.notificationDuration, specifier: "%.1f") seconds") }
+                        Slider(value: $service.notificationDuration, in: 1.6...6, step: 0.2).accessibilityLabel("Notification duration")
+                        Text("Hover a moment to keep it open.").font(.caption).foregroundStyle(.secondary)
+                    }.toggleStyle(.switch).padding(8)
+                }
                 GroupBox("Focus status") {
                     VStack(alignment: .leading, spacing: 12) {
                         Toggle("Show system Focus changes", isOn: $focusStatus.isEnabled)
@@ -369,8 +406,6 @@ struct ApertureView: View {
                         Button("Automation Settings…") { metadata.openAutomationSettings() }
                     }.padding(8)
                 }
-                Button("Preview a clipboard moment") { service.preview() }
-                    .buttonStyle(BezelActionStyle(prominent: true)).disabled(!service.showsClipboard)
             }.padding(28)
         }
     }

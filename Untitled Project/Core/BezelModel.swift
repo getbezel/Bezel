@@ -4,10 +4,12 @@ import Observation
 @MainActor @Observable
 final class BezelModel {
     var account = GoogleAccount()
-    var dashboard = DashboardLayout(available: BezelModule.allCases.filter { $0 != .overview }.map(\.rawValue))
+    var dashboard = DashboardLayout(available: BezelModule.allCases.filter { BezelModule.utilities.contains($0) }.map(\.rawValue))
     static let shared = BezelModel()
     var selection: BezelModule = .overview
-    var search = ""
+    var isStudioVisible = false {
+        didSet { nowPlaying.setActive(started && (aperture.isEnabled || isStudioVisible)) }
+    }
     var stack: StackService
     let airBridge = AirBridgeService()
     let nowPlaying = NowPlayingMetadata()
@@ -124,7 +126,7 @@ final class BezelModel {
             Task { @MainActor in self?.synchronizeAperture() }
         }
         focusStatus.setActive(snapshot.enabled)
-        nowPlaying.setActive(snapshot.enabled)
+        nowPlaying.setActive(snapshot.enabled || isStudioVisible)
         nowPlaying.prefer(snapshot.playing ? snapshot.bundleID : nil)
         if snapshot.enabled {
             let track = nowPlaying.selected
@@ -188,7 +190,7 @@ final class BezelModel {
     func status(for module: BezelModule) -> String {
         switch module {
         case .cleaning: cleaning.isActive ? "Cleaning" : "Ready"
-        case .overview: ""
+        case .overview, .workspace: ""
         case .stack: stack.isEnabled ? "Listening" : "Paused"
         case .airBridge: airBridge.isPlaying ? "Playing" : "Ready"
         case .aperture: aperture.isEnabled ? "Enabled" : "Off"
