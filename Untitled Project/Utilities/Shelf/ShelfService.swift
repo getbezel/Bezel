@@ -40,6 +40,8 @@ final class ShelfService: NSObject, NSWindowDelegate {
         }
     }
     var items: [ShelfItem] = []
+    private(set) var arrival: ShelfArrival?
+    @ObservationIgnored private var arrivalDismissal: Task<Void, Never>?
     var isDropTargeted = false
     var statusMessage: String?
     var isVisible = false
@@ -106,6 +108,7 @@ final class ShelfService: NSObject, NSWindowDelegate {
 
     func addFiles(_ urls: [URL]) {
         statusMessage = nil
+        let previousCount = items.count
         for url in urls where url.isFileURL {
             let normalized = url.standardizedFileURL
             guard !items.contains(where: {
@@ -117,6 +120,10 @@ final class ShelfService: NSObject, NSWindowDelegate {
             items.append(ShelfItem(content: .file(normalized)))
             statusMessage = nil
         }
+        if items.count > previousCount, case .file(let firstURL) = items[previousCount].content {
+            let isImage = UTType(filenameExtension: firstURL.pathExtension)?.conforms(to: .image) == true
+            recordArrival(isImage ? .image : .file, count: items.count - previousCount)
+        }
     }
 
     func addText(_ text: String) {
@@ -125,10 +132,21 @@ final class ShelfService: NSObject, NSWindowDelegate {
         guard text.utf8.count <= 1_024 * 1_024 else { statusMessage = "Text drops are limited to 1 MB each."; return }
         items.append(ShelfItem(content: .text(text)))
         statusMessage = nil
+        recordArrival(.text, count: 1)
+    }
+
+    private func recordArrival(_ kind: ShelfArrival.Kind, count: Int) {
+        arrivalDismissal?.cancel()
+        arrival = ShelfArrival(kind: kind, count: count)
+        arrivalDismissal = Task { [weak self] in
+            do { try await Task.sleep(for: ShelfArrival.displayTime) } catch { return }
+            self?.arrival = nil
+        }
     }
 
     func remove(_ item: ShelfItem) {
         items.removeAll { $0.id == item.id }
+        if items.isEmpty { dismissArrival() }
         if case .file(let url) = item.content {
             if previewURL == url { closePreview() }
             if scopedURLs.remove(url) != nil { url.stopAccessingSecurityScopedResource() }
@@ -136,7 +154,14 @@ final class ShelfService: NSObject, NSWindowDelegate {
         }
     }
 
+    private func dismissArrival() {
+        arrivalDismissal?.cancel()
+        arrivalDismissal = nil
+        arrival = nil
+    }
+
     func clear() {
+        dismissArrival()
         loadGeneration = UUID()
         for task in imageTasks.values { task.cancel() }
         imageTasks.removeAll()

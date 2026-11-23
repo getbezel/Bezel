@@ -24,8 +24,7 @@ struct ShelfView: View {
             ShelfDropContainer(service: service) {
                 Group {
                     if service.items.isEmpty {
-                        ShelfEmptyState()
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        Color.clear
                     } else {
                         ScrollView {
                             LazyVGrid(columns: [GridItem(.adaptive(minimum: 280), spacing: 8)], spacing: 8) {
@@ -34,6 +33,7 @@ struct ShelfView: View {
                         }
                     }
                 }
+                .overlay { ShelfCatchFeedback(service: service) }
                 .background(service.isDropTargeted ? Color.accentColor.opacity(0.1) : Color.primary.opacity(0.025), in: RoundedRectangle(cornerRadius: 12))
                 .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(service.isDropTargeted ? Color.accentColor : Color.primary.opacity(0.14), style: StrokeStyle(lineWidth: 1, dash: [5, 4])))
             }
@@ -92,19 +92,19 @@ struct ShelfDrawer: View {
                         .shelfMouseRegion()
                     Spacer(minLength: 0)
                 }.controlSize(.small)
-                if service.items.isEmpty {
-                    ViewThatFits(in: .vertical) {
-                        ShelfEmptyState()
-                        ShelfEmptyState(compact: true)
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else {
-                    ScrollView {
-                        LazyVStack(spacing: 6) {
-                            ForEach(service.items) { item in ShelfItemRow(item: item, service: service) }
+                Group {
+                    if service.items.isEmpty {
+                        Color.clear
+                    } else {
+                        ScrollView {
+                            LazyVStack(spacing: 6) {
+                                ForEach(service.items) { item in ShelfItemRow(item: item, service: service) }
+                            }
                         }
                     }
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .overlay { ShelfCatchFeedback(service: service) }
                 HStack(spacing: 8) {
                     Text(service.statusMessage ?? (service.isDropTargeted ? "Release to add to Shelf" : "Drag an item to another app"))
                         .font(.caption).foregroundStyle(.secondary).lineLimit(2)
@@ -141,21 +141,6 @@ private struct ShelfSizeMenu: View {
             Button("Roomy") { service.setSize(width: 520, height: 560) }
         } label: { Label("Size", systemImage: "arrow.up.left.and.arrow.down.right") }
         .menuStyle(.borderlessButton).fixedSize().help("Shelf size")
-    }
-}
-
-private struct ShelfEmptyState: View {
-    var compact = false
-
-    var body: some View {
-        VStack(spacing: compact ? 8 : 12) {
-            Image(systemName: "tray.and.arrow.down").font(.system(size: compact ? 28 : 36, weight: .light)).foregroundStyle(.tint)
-            Text("Drop something here").font(.headline)
-            if !compact {
-                Text("Files, images, and text.\nReady whenever you are.")
-                    .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
-            }
-        }.padding(compact ? 8 : 20)
     }
 }
 
