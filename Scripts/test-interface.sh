@@ -5,6 +5,11 @@ bezel_test_build="$(mktemp -d "${TMPDIR:-/tmp}/bezel-interface.XXXXXX")"
 trap 'rm -rf "$bezel_test_build"' EXIT
 xcrun swiftc -swift-version 6 -target "$(uname -m)-apple-macos15.0" -O \
   "$bezel_root/Untitled Project/Modules/Aperture/FocusStatusMonitor.swift" \
+  "$bezel_root/Untitled Project/Design/GlassAppearance.swift" \
+  "$bezel_root/Untitled Project/Design/StudioPageScroll.swift" \
+  "$bezel_root/Untitled Project/Utilities/Shelf/ShelfCatchFeedback.swift" \
+  "$bezel_root/Untitled Project/Utilities/Shelf/ShelfService.swift" \
+  "$bezel_root/Untitled Project/Utilities/Shelf/ShelfView.swift" \
   "$bezel_root/Untitled Project/Utilities/Shelf/ShelfImageStore.swift" \
   "$bezel_root/Untitled Project/Utilities/Shelf/ShelfWindowInteraction.swift" \
   "$bezel_root/Untitled Project/Core/CallbackDeadline.swift" \

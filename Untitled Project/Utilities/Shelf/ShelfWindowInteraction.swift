@@ -121,6 +121,14 @@ final class ShelfMouseRegionView: NSView {
 }
 
 extension View {
+    /// Attach to the entire drawer so the footer padding between the arrow and window edge also resizes.
+    func shelfResizeCorner() -> some View {
+        overlay(alignment: .bottomTrailing) {
+            ShelfMouseRegion(interaction: .resize).frame(width: 46, height: 46)
+                .accessibilityHidden(true)
+        }
+    }
+
     func shelfMouseRegion(_ interaction: ShelfPanel.Interaction = .content) -> some View {
         background(ShelfMouseRegion(interaction: interaction))
     }

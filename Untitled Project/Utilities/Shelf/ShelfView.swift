@@ -81,7 +81,7 @@ struct ShelfDrawer: View {
                         .help("Drag to move Shelf")
                     Text("\(service.count)").font(.caption.monospacedDigit()).foregroundStyle(.secondary)
                     Spacer(minLength: 0).frame(minHeight: 24)
-                    ShelfSizeMenu(service: service).labelStyle(.iconOnly).shelfMouseRegion()
+                    ShelfSizeMenu(service: service, icon: "slider.horizontal.3").labelStyle(.iconOnly).shelfMouseRegion()
                     Button { service.hide() } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
                         .buttonStyle(.plain).accessibilityLabel("Hide Shelf").shelfMouseRegion()
                 }
@@ -113,11 +113,8 @@ struct ShelfDrawer: View {
                         Button("Clear") { service.clear() }.buttonStyle(.borderless).controlSize(.small).shelfMouseRegion()
                     }
                     Image(systemName: "arrow.up.left.and.arrow.down.right")
-                        .font(.caption).foregroundStyle(.tertiary)
+                        .font(.caption).foregroundStyle(.secondary)
                         .frame(width: 22, height: 22)
-                        .overlay {
-                            ShelfMouseRegion(interaction: .resize).frame(width: 32, height: 32)
-                        }
                         .help("Drag to resize Shelf")
                         .accessibilityLabel("Resize Shelf; size controls are in the menu")
                 }
@@ -127,6 +124,7 @@ struct ShelfDrawer: View {
             .bezelGlass(cornerRadius: 28)
             .overlay(RoundedRectangle(cornerRadius: 28).strokeBorder(service.isDropTargeted ? Color.accentColor : Color.primary.opacity(0.12), lineWidth: service.isDropTargeted ? 2 : 1))
             .padding(2)
+            .shelfResizeCorner()
             .buttonStyle(BezelActionStyle())
         }
     }
@@ -134,13 +132,14 @@ struct ShelfDrawer: View {
 
 private struct ShelfSizeMenu: View {
     let service: ShelfService
+    var icon = "arrow.up.left.and.arrow.down.right"
     var body: some View {
         Menu {
             Button("Compact") { service.setSize(width: 320, height: 300) }
             Button("Comfortable") { service.setSize(width: 380, height: 400) }
             Button("Roomy") { service.setSize(width: 520, height: 560) }
-        } label: { Label("Size", systemImage: "arrow.up.left.and.arrow.down.right") }
-        .menuStyle(.borderlessButton).fixedSize().help("Shelf size")
+        } label: { Label("Size", systemImage: icon) }
+        .menuStyle(.borderlessButton).fixedSize().help("Choose a Shelf size preset")
     }
 }
 

@@ -2,6 +2,7 @@ import AppKit
 import Foundation
 import ImageIO
 import UniformTypeIdentifiers
+import SwiftUI
 import Synchronization
 
 @main struct InterfaceTests {
@@ -97,6 +98,36 @@ import Synchronization
         try await Task.sleep(for: .milliseconds(25)); inFlight.cancel()
         do { try await inFlight.value; fatalError("Canceled capture succeeded") } catch is CancellationError {}
         replyBox.withLock { $0 }?(.success(10))
+    }
+
+    @MainActor static func shelfDrawerCornerChecks() async throws {
+        let shelf = ShelfService()
+        let panel = ShelfPanel(contentRect: CGRect(x: 100, y: 100, width: 280, height: 240),
+                               styleMask: [.borderless, .nonactivatingPanel, .resizable], backing: .buffered, defer: false)
+        panel.isReleasedWhenClosed = false
+        panel.ignoresMouseEvents = true
+        panel.alphaValue = 0
+        defer { panel.close() }
+        let host = NSHostingView(rootView: ShelfDrawer(service: shelf))
+        host.sizingOptions = []
+        panel.contentView = host
+        panel.orderFrontRegardless()
+
+        for size in [CGSize(width: 280, height: 240), CGSize(width: 520, height: 560)] {
+            panel.setContentSize(size)
+            if size.width > 280 { shelf.addText("Sample") }
+            let arrow = CGPoint(x: size.width - 29, y: 29)
+            for _ in 0..<30 {
+                host.layoutSubtreeIfNeeded()
+                if panel.interaction(at: arrow) == .resize { break }
+                try await Task.sleep(for: .milliseconds(10))
+            }
+            for inset in [29.0, 16, 10, 4] {
+                let point = CGPoint(x: size.width - inset, y: inset)
+                require(panel.interaction(at: point) == .resize, "The entire corner between the arrow and the edge must resize Shelf at \(size)")
+            }
+            require(panel.interaction(at: CGPoint(x: size.width / 2, y: 8)) == .move, "The rest of the footer must still move Shelf")
+        }
     }
 
     @MainActor static func shelfWindowChecks() {
@@ -197,6 +228,7 @@ import Synchronization
         try await commandChecks()
         try await callbackChecks()
         shelfWindowChecks()
+        try await shelfDrawerCornerChecks()
         var focus = FocusChangeTracker()
         require(focus.observe(nil) == nil, "Unknown Focus must not announce off")
         require(focus.observe(false) == nil, "Initial status must establish a baseline")
