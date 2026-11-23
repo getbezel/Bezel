@@ -23,17 +23,20 @@ struct StudioDesk: View {
                         }.font(.caption).padding(.horizontal, 12).frame(height: 31)
                     }.studioSurface()
                 }.buttonStyle(.plain).accessibilityLabel("Open Workspace")
+                    .modifier(StudioDeskHover(module: .workspace))
                 VStack(spacing: 10) {
                     let item = model.shelf.items.last
                     deskCard("Latest on Shelf", symbol: "tray", title: item?.title ?? "Shelf is empty",
                              detail: item == nil ? "Open floating Shelf" : "\(model.shelf.count) on Shelf") {
                         if let item { inspect(item.id) } else { model.shelf.show() }
                     }
+                    .modifier(StudioDeskHover(module: .shelf))
                     let clip = model.stack.history.first
                     deskCard("Latest clip", symbol: "doc.on.clipboard", title: clip?.title ?? "No clips yet",
                              detail: clip?.sourceName ?? "Open Stack") {
                         if let clip { inspect(clip.id) } else { model.selection = .stack }
                     }
+                    .modifier(StudioDeskHover(module: .stack))
                 }.frame(width: 205)
             }.frame(height: 198)
         }

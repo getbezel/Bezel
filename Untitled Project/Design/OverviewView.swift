@@ -139,6 +139,7 @@ private struct UtilityCard: View {
         }
         .buttonStyle(DashboardCardPressStyle())
         .onHover { value in hovered = value; if value { iconPulse += 1 } }
+        .preference(key: StudioHoverAccent.self, value: hovered ? module : nil)
         .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: hovered)
         .help("Open \(module.title). Drag to rearrange; right-click for more options.")
     }

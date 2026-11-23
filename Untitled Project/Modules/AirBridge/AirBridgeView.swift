@@ -74,10 +74,8 @@ struct AirBridgeView: View {
                 }
             }
             .padding(28)
-            .frame(maxWidth: 1000, alignment: .leading)
-            .frame(maxWidth: .infinity)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .background(.background)
     }
 }
 
@@ -175,8 +173,7 @@ private struct AirBridgeChannelView: View {
             }
         }
         .padding(18)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
-        .overlay { RoundedRectangle(cornerRadius: 14).strokeBorder(.separator.opacity(0.5), lineWidth: 0.5) }
+        .studioSurface()
     }
 
     private var meterFraction: Double { channel.level > 0 ? min(1, max(0, (20 * log10(channel.level) + 60) / 60)) : 0 }

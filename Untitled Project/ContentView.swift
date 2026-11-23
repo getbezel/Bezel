@@ -6,6 +6,7 @@ struct ContentView: View {
     @State private var showSignIn = false
     @State private var presentedSignIn = false
     @State private var showSearch = false
+    @State private var hoveredHomeModule: BezelModule?
     @State private var inspectedItem: UUID?
     @State private var collapsedGroups: Set<String> = []
     private let groups = ["CAPTURE & COLLECT", "WORK & FOCUS", "SYSTEM"]
@@ -37,7 +38,11 @@ struct ContentView: View {
                         .frame(width: viewport.size.width, height: viewport.size.height, alignment: .topLeading)
                         .clipped()
                     }
-                }.background(StudioColor.canvas)
+                }
+                .onPreferenceChange(StudioHoverAccent.self) { hoveredHomeModule = $0 }
+                .background {
+                    StudioHeaderBackdrop(module: model.selection, hovered: hoveredHomeModule, metadata: model.nowPlaying)
+                }
             }
             Divider()
             StudioSessionBar(model: model)

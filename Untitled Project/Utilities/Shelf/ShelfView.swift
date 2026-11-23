@@ -7,68 +7,65 @@ struct ShelfView: View {
     @Bindable var service: ShelfService
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 22) {
-                HStack(alignment: .top, spacing: 16) {
-                    Text("Carry files, images, and text between apps and Spaces.").foregroundStyle(.secondary)
-                    Spacer()
-                    Toggle("Edge activation", isOn: $service.isEnabled).toggleStyle(.switch)
-                }
-                HStack {
-                    Button("Show Shelf", systemImage: "rectangle.on.rectangle") { service.show() }
-                        .buttonStyle(BezelActionStyle(prominent: true))
-                    Button("Add Clipboard", systemImage: "doc.on.clipboard") { service.pasteClipboard() }
-                    Button("Capture Image", systemImage: "camera.viewfinder") { service.captureImage?() }
-                    Spacer()
-                    Text("\(service.count) of 50").font(.callout.monospacedDigit()).foregroundStyle(.secondary)
-                }
-                ShelfDropContainer(service: service) {
-                    ScrollView {
-                        if service.items.isEmpty {
-                            ShelfEmptyState()
-                                .frame(maxWidth: .infinity, minHeight: 260)
-                        } else {
-                            LazyVStack(spacing: 8) {
+        StudioPageScroll {
+            HStack(alignment: .top, spacing: 16) {
+                Text("Carry files, images, and text between apps and Spaces.").foregroundStyle(.secondary)
+                Spacer()
+                Toggle("Edge activation", isOn: $service.isEnabled).toggleStyle(.switch)
+            }
+            HStack {
+                Button("Show Shelf", systemImage: "rectangle.on.rectangle") { service.show() }
+                    .buttonStyle(BezelActionStyle(prominent: true))
+                Button("Add Clipboard", systemImage: "doc.on.clipboard") { service.pasteClipboard() }
+                Button("Capture Image", systemImage: "camera.viewfinder") { service.captureImage?() }
+                Spacer()
+                Text("\(service.count) of 50").font(.callout.monospacedDigit()).foregroundStyle(.secondary)
+            }
+            ShelfDropContainer(service: service) {
+                Group {
+                    if service.items.isEmpty {
+                        ShelfEmptyState()
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else {
+                        ScrollView {
+                            LazyVGrid(columns: [GridItem(.adaptive(minimum: 280), spacing: 8)], spacing: 8) {
                                 ForEach(service.items) { item in ShelfItemRow(item: item, service: service) }
                             }.padding(12)
                         }
                     }
-                    .background(service.isDropTargeted ? Color.accentColor.opacity(0.1) : Color.primary.opacity(0.025), in: RoundedRectangle(cornerRadius: 16))
-                    .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(service.isDropTargeted ? Color.accentColor : Color.primary.opacity(0.12), style: StrokeStyle(lineWidth: 1, dash: [5, 4])))
                 }
-                .frame(height: 310)
-                GroupBox {
-                    VStack(alignment: .leading, spacing: 14) {
-                        HStack {
-                            Text("Floating Shelf").font(.headline)
-                            Spacer()
-                            ShelfSizeMenu(service: service)
-                            Button("Reset Position") { service.resetPosition() }
-                        }
-                        HStack {
-                            Text("Width").frame(width: 48, alignment: .leading)
-                            Slider(value: $service.drawerWidth, in: 280...640, step: 10)
-                            Text("\(Int(service.drawerWidth)) pt").monospacedDigit().frame(width: 60, alignment: .trailing)
-                        }
-                        HStack {
-                            Text("Height").frame(width: 48, alignment: .leading)
-                            Slider(value: $service.drawerHeight, in: 240...720, step: 10)
-                            Text("\(Int(service.drawerHeight)) pt").monospacedDigit().frame(width: 60, alignment: .trailing)
-                        }
-                        Text("Drag any empty area to move Shelf, or the bottom-right grip to resize. Drag an item to take it with you. Your layout is remembered.")
-                            .font(.caption).foregroundStyle(.secondary)
-                    }.padding(8)
-                }
-                HStack(alignment: .top) {
-                    Text(service.statusMessage ?? "Original files stay in place. Captures are temporary PNG files; export them before clearing Shelf.")
-                        .font(.caption).foregroundStyle(.secondary)
-                    Spacer()
-                    Button("Clear Shelf") { service.clear() }.disabled(service.items.isEmpty)
-                }
+                .background(service.isDropTargeted ? Color.accentColor.opacity(0.1) : Color.primary.opacity(0.025), in: RoundedRectangle(cornerRadius: 12))
+                .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(service.isDropTargeted ? Color.accentColor : Color.primary.opacity(0.14), style: StrokeStyle(lineWidth: 1, dash: [5, 4])))
             }
-            .padding(28)
-            .frame(maxWidth: 980, alignment: .leading)
-            .frame(maxWidth: .infinity, alignment: .topLeading)
+            .frame(maxWidth: .infinity, minHeight: 210, maxHeight: .infinity)
+            GroupBox {
+                VStack(alignment: .leading, spacing: 14) {
+                    HStack {
+                        Text("Floating Shelf").font(.headline)
+                        Spacer()
+                        ShelfSizeMenu(service: service)
+                        Button("Reset Position") { service.resetPosition() }
+                    }
+                    HStack {
+                        Text("Width").frame(width: 48, alignment: .leading)
+                        Slider(value: $service.drawerWidth, in: 280...640, step: 10)
+                        Text("\(Int(service.drawerWidth)) pt").monospacedDigit().frame(width: 60, alignment: .trailing)
+                    }
+                    HStack {
+                        Text("Height").frame(width: 48, alignment: .leading)
+                        Slider(value: $service.drawerHeight, in: 240...720, step: 10)
+                        Text("\(Int(service.drawerHeight)) pt").monospacedDigit().frame(width: 60, alignment: .trailing)
+                    }
+                    Text("Drag any empty area to move Shelf, or the bottom-right grip to resize. Drag an item to take it with you. Your layout is remembered.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }.padding(8)
+            }
+            HStack(alignment: .top) {
+                Text(service.statusMessage ?? "Original files stay in place. Captures are temporary PNG files; export them before clearing Shelf.")
+                    .font(.caption).foregroundStyle(.secondary)
+                Spacer()
+                Button("Clear Shelf") { service.clear() }.disabled(service.items.isEmpty)
+            }
         }
     }
 }
